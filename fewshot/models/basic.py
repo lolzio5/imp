@@ -1,9 +1,13 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import torchvision.models as models
 from torch.autograd import Variable
+
+# select device for model tensors
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.utils import *
@@ -32,15 +36,15 @@ class Protonet(nn.Module):
         ##For learning cluster radii
         log_sigma_u = torch.log(torch.FloatTensor([config.init_sigma_u]))
         if config.learn_sigma_u:
-            self.log_sigma_u = nn.Parameter(log_sigma_u, requires_grad=True)
+            self.log_sigma_u = nn.Parameter(log_sigma_u, requires_grad=True).to(DEVICE)
         else:
-            self.log_sigma_u = Variable(log_sigma_u, requires_grad=True).cuda()
+            self.log_sigma_u = Variable(log_sigma_u, requires_grad=True).to(DEVICE)
 
         log_sigma_l = torch.log(torch.FloatTensor([config.init_sigma_l]))
         if config.learn_sigma_l:
-            self.log_sigma_l = nn.Parameter(log_sigma_l, requires_grad=True)
+            self.log_sigma_l = nn.Parameter(log_sigma_l, requires_grad=True).to(DEVICE)
         else:
-            self.log_sigma_l = Variable(log_sigma_l, requires_grad=True).cuda()
+            self.log_sigma_l = Variable(log_sigma_l, requires_grad=True).to(DEVICE)
 
         x_dim = [config.num_channel]
         hid_dim = 64
@@ -89,22 +93,23 @@ class Protonet(nn.Module):
 
     def _process_batch(self, batch, super_classes=False):
         """Convert np arrays to variable"""
-        x_train = Variable(torch.from_numpy(batch.x_train).type(torch.FloatTensor), requires_grad=False).cuda()
-        x_test = Variable(torch.from_numpy(batch.x_test).type(torch.FloatTensor), requires_grad=False).cuda()
+        # convert numpy arrays to torch tensors and move to device
+        x_train = torch.from_numpy(batch.x_train).type(torch.FloatTensor).to(DEVICE)
+        x_test = torch.from_numpy(batch.x_test).type(torch.FloatTensor).to(DEVICE)
 
         if batch.x_unlabel is not None and batch.x_unlabel.size > 0:
-            x_unlabel = Variable(torch.from_numpy(batch.x_unlabel).type(torch.FloatTensor), requires_grad=False).cuda()
-            y_unlabel = Variable(torch.from_numpy(batch.y_unlabel.astype(np.int64)), requires_grad=False).cuda()
+            x_unlabel = torch.from_numpy(batch.x_unlabel).type(torch.FloatTensor).to(DEVICE)
+            y_unlabel = torch.from_numpy(batch.y_unlabel.astype(np.int64)).to(DEVICE)
         else:
             x_unlabel = None
             y_unlabel = None
 
         if super_classes:
-            labels_train = Variable(torch.from_numpy(batch.y_train_str[:,1]).type(torch.LongTensor), requires_grad=False).unsqueeze(0).cuda()
-            labels_test = Variable(torch.from_numpy(batch.y_test_str[:,1]).type(torch.LongTensor), requires_grad=False).unsqueeze(0).cuda()
+            labels_train = torch.from_numpy(batch.y_train_str[:,1]).type(torch.LongTensor).unsqueeze(0).to(DEVICE)
+            labels_test = torch.from_numpy(batch.y_test_str[:,1]).type(torch.LongTensor).unsqueeze(0).to(DEVICE)
         else:
-            labels_train = Variable(torch.from_numpy(batch.y_train.astype(np.int64)[:,:,1]),requires_grad=False).cuda()
-            labels_test = Variable(torch.from_numpy(batch.y_test.astype(np.int64)[:,:,1]),requires_grad=False).cuda()
+            labels_train = torch.from_numpy(batch.y_train.astype(np.int64)[:,:,1]).to(DEVICE)
+            labels_test = torch.from_numpy(batch.y_test.astype(np.int64)[:,:,1]).to(DEVICE)
 
         return Episode(x_train,
                                      labels_train,
@@ -165,7 +170,7 @@ class Protonet(nn.Module):
             _, max_indices = torch.max(probs, 2)    # [B, N]
             nClusters = probs.size()[2]
             max_indices = one_hot(max_indices, nClusters)
-            counts = torch.sum(max_indices, 1).cuda()
+            counts = torch.sum(max_indices, 1).to(DEVICE)
         else:
             counts = torch.sum(probs, 1)
         return counts

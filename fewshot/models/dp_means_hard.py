@@ -99,9 +99,9 @@ class DPMeansHardModel(IMPModel):
         _, support_preds = torch.max(logits.data, dim=1)
         y_pred = target_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

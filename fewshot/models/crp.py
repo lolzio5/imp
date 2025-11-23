@@ -123,25 +123,25 @@ class CRPModel(Protonet):
                     prob_unlabel = assign_cluster_radii_crp(protos, ex.unsqueeze(0).unsqueeze(0), radii, priors)#, priors)
 
                     if all_unlabel_probs is None:
-                        all_unlabel_probs = prob_unlabel.data
+                        all_unlabel_probs = prob_unlabel.detach()
                     else:
-                        all_unlabel_probs = torch.cat([all_unlabel_probs, prob_unlabel.data],dim=1) 
+                        all_unlabel_probs = torch.cat([all_unlabel_probs, prob_unlabel.detach()],dim=1) 
 
                     #adding a cluster!
-                    if (prob_unlabel[0,0,-1].data[0] > eps):
+                    if (prob_unlabel[0,0,-1].item() > eps):
 
-                        nClusters, protos, counts, radii = self._add_cluster(nClusters, protos, counts, radii,ex=ex.data,nc=eps)
+                        nClusters, protos, counts, radii = self._add_cluster(nClusters, protos, counts, radii,ex=ex.detach(),nc=eps)
                         prob_train = torch.cat([prob_train, Variable(torch.zeros(prob_train.size()[0], prob_train.size()[1], 1)).cuda()],dim=2)
                         all_unlabel_probs = torch.cat([all_unlabel_probs, torch.zeros(all_unlabel_probs.size()[0], all_unlabel_probs.size()[1],1).cuda()],dim=2)
                                                 
                         priors = self._compute_priors(counts)
 
-                    total_prob = torch.cat([prob_train.data, all_unlabel_probs],dim=1)
-                    counts = Variable(self._get_count(total_prob, soft=True))
+                    total_prob = torch.cat([prob_train.detach(), all_unlabel_probs],dim=1)
+                    counts = self._get_count(total_prob, soft=True)
  
                     priors = self._compute_priors(counts)
 
-                total_prob = torch.cat([prob_train, Variable(all_unlabel_probs, requires_grad=False)],dim=1)
+                total_prob = torch.cat([prob_train.detach(), all_unlabel_probs.detach()],dim=1)
                 counts = self._get_count(total_prob, soft=True)
 
                 protos = self._compute_protos(h_all, total_prob)
@@ -149,14 +149,15 @@ class CRPModel(Protonet):
 
         logits = compute_logits_radii_crp(protos, h_test, radii, priors)
         
-        y_pred = np.argmax(logits.data, axis=2)
+        y_pred = np.argmax(logits.detach().cpu().numpy(), axis=2)
 
         loss = F.cross_entropy(logits.squeeze(), batch.y_test.squeeze())
         
-        acc_val = torch.eq(y_pred.squeeze(), batch.y_test.cpu().data[0]).float().mean()
+        # compute accuracy as float
+        acc_val = float((y_pred.squeeze() == batch.y_test.cpu().numpy().squeeze()).mean())
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

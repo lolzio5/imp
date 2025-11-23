@@ -202,23 +202,34 @@ class OmniglotDataset(RefinementMetaDataset):
     if os.path.exists(cache_path):
       with open(cache_path, 'rb') as f:
         try:
-          data = pkl.load(f, encoding='bytes')
-          self._images = data[b'images']
-          self._labels = data[b'labels']
-          self._label_str = data[b'label_str']
-          if b'category_labels' in list(data.keys()):
-            self._category_labels = data[b'category_labels']
-          else:
-            self._category_labels = None
-        except:
-          data = pkl.load(f)
-          self._images = data['images']
-          self._labels = data['labels']
-          self._label_str = data['label_str']
-          if b'category_labels' in list(data.keys()):
-            self._category_labels = data[b'category_labels']
-          else:
-            self._category_labels = None
+          try:
+            data = pkl.load(f, encoding='bytes')
+            self._images = data[b'images']
+            self._labels = data[b'labels']
+            self._label_str = data[b'label_str']
+            if b'category_labels' in list(data.keys()):
+              self._category_labels = data[b'category_labels']
+            else:
+              self._category_labels = None
+          except EOFError:
+            # corrupted/empty cache file, signal to rebuild
+            return False
+        except Exception:
+            try:
+              data = pkl.load(f)
+              self._images = data['images']
+              self._labels = data['labels']
+              self._label_str = data['label_str']
+              if 'category_labels' in list(data.keys()):
+                self._category_labels = data['category_labels']
+              else:
+                self._category_labels = None
+            except EOFError:
+              # corrupted/empty cache file, signal to rebuild
+              return False
+            except Exception:
+              # If still failing, don't crash — signal rebuild
+              return False
 
         self._category_labels = self.process_category_labels(self._category_labels)
         self.read_label_split()

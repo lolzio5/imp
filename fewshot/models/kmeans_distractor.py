@@ -49,7 +49,7 @@ class KMeansDistractorModel(IMPModel):
         return nClusters, protos, radii
 
     def delete_empty_clusters(self, tensor_proto, prob, radii, eps=1e-6):
-        column_sums = torch.sum(prob[0],dim=0).data
+        column_sums = torch.sum(prob[0],dim=0).detach()
         good_protos = column_sums > eps
         idxs = torch.nonzero(good_protos).squeeze()
         return tensor_proto[:,idxs,:], radii[:,idxs]
@@ -106,10 +106,10 @@ class KMeansDistractorModel(IMPModel):
         _, support_preds = torch.max(logits.data, dim=1)
         y_pred = support_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

@@ -132,13 +132,13 @@ class MapDPModel(IMPModel):
                     else:
                         total_prob[0,i+h_train.size()[1],:] = one_hot(max_val, nClusters).cuda()
 
-                    if max_val[0].data[0] == nClusters:
+                    if max_val[0].item() == nClusters:
                         nClusters, protos, counts, radii  = self._add_cluster(nClusters, protos, counts, radii, mu0)
                         target_labels = torch.cat([target_labels, torch.LongTensor([-1])],dim=0)
                         total_prob = torch.cat([total_prob, Variable(torch.zeros(total_prob.size()[0], total_prob.size()[1], 1)).cuda()],dim=2)
                     
 
-        final_prob = Variable(total_prob.data, requires_grad=False)
+        final_prob = total_prob.detach()
         counts = self._get_count(final_prob, soft=False)
         priors = self._compute_priors(counts)
         radii, protos = self._update_hypers(h_all, final_prob, counts, mu0)                
@@ -156,10 +156,10 @@ class MapDPModel(IMPModel):
         _, support_preds = torch.max(logits.data, dim=1)
         y_pred = target_labels.cuda()[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

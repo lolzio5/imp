@@ -36,6 +36,20 @@ To be compatible with [R4RR](https://github.com/Giotto-maker/r4rr/tree/main), th
 3. Install requirements
     - `pip install -r requirements.txt`
 
+4. Install Omniglot dataset
+    - On Windows, you can run the script
+    - `powershell scripts/setup_omniglot.ps1`
+    - Note that this will take a while to install, and it may be better to navigate to the [dataset](https://github.com/brendenlake/omniglot/tree/master) and download
+        - `main/python/images_background.zip`
+        - `main/python/images_evaluation.zip`
+    - extract all downloaded folders and move them to `omniglot\images_all`
+
+5. Run Test (k-Means Refine on Omniglot dataset)
+    - `python run_eval.py --dataset omniglot --model kmeans-refine --nshot 1 --nclasses-train 20 --nclasses-eval 5 --results ./results --num-eval-episode 100`
+
+6. Run test on all datasets (script that runs all datasets)
+   - `powershell -ExecutionPolicy Bypass -File .\scripts\run_all_models.ps1 -Mode quick`
+
 ---
 
 # Infinite Mixture Prototypes

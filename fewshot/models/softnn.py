@@ -32,7 +32,7 @@ class SoftNN(IMPModel):
         bsize = h_train.size()[0]
         radii = Variable(torch.ones(bsize, nClusters)).cuda() * torch.exp(self.log_sigma_l)
 
-        support_labels = batch.y_train.data[0].long()
+        support_labels = batch.y_train[0].long()
 
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
 
@@ -43,13 +43,13 @@ class SoftNN(IMPModel):
         loss = self.loss(logits, support_targets, support_labels)
 
         # map support predictions back into classes to check accuracy
-        _, support_preds = torch.max(logits.data, dim=1)
+        _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = support_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

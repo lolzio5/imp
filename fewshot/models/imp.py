@@ -54,9 +54,9 @@ class IMPModel(Protonet):
         rho = rho.mean()
 
         if semi_supervised:
-            sigma = (torch.exp(self.log_sigma_l).data[0]+torch.exp(self.log_sigma_u).data[0])/2.
+            sigma = (torch.exp(self.log_sigma_l).item() + torch.exp(self.log_sigma_u).item()) / 2.0
         else:
-            sigma = torch.exp(self.log_sigma_l).data[0]
+            sigma = torch.exp(self.log_sigma_l).item()
 
         alpha = self.config.ALPHA
         lamda = -2*sigma*np.log(self.config.ALPHA) + self.config.dim*sigma*np.log(1+rho/sigma)
@@ -185,9 +185,9 @@ class IMPModel(Protonet):
         acc_val = torch.eq(y_pred, labels[0]).float().mean()
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }
 
     def forward_unsupervised(self, sample, super_classes, unlabel_lambda=20., num_cluster_steps=5):
@@ -220,4 +220,4 @@ class IMPModel(Protonet):
                 prob_all = prob_unlabel_nograd
                 protos = self._compute_protos(h_all, prob_all)
 
-        return {'logits':prob_unlabel_nograd.data[0]}
+        return {'logits':prob_unlabel_nograd.detach().cpu().numpy()}

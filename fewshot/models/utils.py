@@ -7,6 +7,9 @@ import torch.optim as optim
 from torch.autograd import Variable
 import pdb
 
+# device helper
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 def one_hot(indices, depth, dim=-1, cumulative=True):
     """One-hot encoding along dim"""
     new_size = []
@@ -17,11 +20,13 @@ def one_hot(indices, depth, dim=-1, cumulative=True):
     if dim == -1:
         new_size.append(depth)
     
-    out = torch.zeros(new_size)
+    # place output on same device as indices when possible
+    device = indices.device if hasattr(indices, 'device') else DEVICE
+    out = torch.zeros(new_size, device=device)
     indices = torch.unsqueeze(indices, dim)
-    out = out.scatter_(dim, indices.data.type(torch.LongTensor), 1.0)
+    out = out.scatter_(dim, indices.type(torch.LongTensor).to(device), 1.0)
 
-    return Variable(out)
+    return out
 
 def update_params(loss, params_dict, step_size=0.1):
     params= [v for k,v in list(params_dict.items())]
@@ -73,7 +78,7 @@ def reverse_map(y_raw, class_id):
     return out
 
 def ones_like(variable, requires_grad=False):
-    return Variable(torch.ones_like(variable), requires_grad=requires_grad)
+    return torch.ones_like(variable)
 
 def compute_distances(protos, example):
   dist = torch.sum((example - protos)**2, dim=2)
@@ -150,8 +155,9 @@ def assign_cluster_radii_limited(cluster_centers, data, radii, target_labels):
         prob: [B, N, K] Soft assignment.
     """
     logits = compute_logits_radii(cluster_centers, data, radii) # [B, N, K]
-    class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size()).cuda()
-    class_logits[target_labels] = logits.data[target_labels]
+    device = cluster_centers.device if hasattr(cluster_centers, 'device') else DEVICE
+    class_logits = (torch.min(logits).detach()-100) * torch.ones(logits.size(), device=device)
+    class_logits[target_labels] = logits.detach()[target_labels]
     logits_shape = logits.size()
     bsize = logits_shape[0]
     ndata = logits_shape[1]

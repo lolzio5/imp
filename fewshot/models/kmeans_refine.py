@@ -11,6 +11,8 @@ from fewshot.models.basic import Protonet
 from fewshot.models.utils import *
 import pdb
 
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 @RegisterModel("kmeans-refine")
 class KMeansRefine(Protonet):
 
@@ -24,12 +26,12 @@ class KMeansRefine(Protonet):
         h_train = self._run_forward(xs)
         h_test = self._run_forward(xq)
 
-        prob_train = one_hot(batch.y_train, nClusters).cuda()
+        prob_train = one_hot(batch.y_train, nClusters)
 
         protos = self._compute_protos(h_train, prob_train)
 
         bsize = h_train.size()[0]
-        radii = Variable(torch.ones(bsize, nClusters)).cuda() * torch.exp(self.log_sigma_l)
+        radii = torch.ones((bsize, nClusters), device=DEVICE) * torch.exp(self.log_sigma_l)
 
         #deal with semi-supervised data
         if batch.x_unlabel is not None:
@@ -40,7 +42,7 @@ class KMeansRefine(Protonet):
             for ii in range(self.config.num_cluster_steps):
 
                 prob_unlabel = assign_cluster_radii(protos, h_unlabel, radii)
-                prob_unlabel_nograd = Variable(prob_unlabel.data, requires_grad=False).cuda()
+                prob_unlabel_nograd = prob_unlabel.detach()
 
                 prob_all = torch.cat([prob_train, prob_unlabel_nograd], dim=1)
                 protos = self._compute_protos(h_all, prob_all)
@@ -50,11 +52,12 @@ class KMeansRefine(Protonet):
 
         _, y_pred = torch.max(logits, dim=2)
         loss = F.cross_entropy(logits.squeeze(), batch.y_test.squeeze())
-        
-        acc_val = torch.eq(y_pred.squeeze(), batch.y_test.squeeze()).float().mean().data[0]
+
+        # compute accuracy as a Python float
+        acc_val = torch.eq(y_pred.squeeze(), batch.y_test.squeeze()).float().mean().item()
 
         return loss, {
-            'loss': loss.data[0],
+            'loss': loss.item(),
             'acc': acc_val,
-            'logits': logits.data[0]
+            'logits': logits.detach().cpu().numpy()
             }

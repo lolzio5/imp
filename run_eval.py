@@ -219,7 +219,8 @@ def train(config,
 
 def main(args):
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
     if args.num_test == -1 and (args.dataset == "tiered-imagenet" or
