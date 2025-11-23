@@ -92,15 +92,15 @@ parser.add_argument('--pretrain', default=None,
                                         help='folder of the model to load')
 args = parser.parse_args()
 
-free_gpu_id = get_free_gpu()
-os.environ['CUDA_VISIBLE_DEVICES'] = str(free_gpu_id)
+# Determine device: prefer CUDA if available and not explicitly disabled by CUDA_VISIBLE_DEVICES
+if os.environ.get('CUDA_VISIBLE_DEVICES', None) == '':
+    device = torch.device('cpu')
+else:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def _get_model(config):
-    m = get_model(
-                    args.model,
-                    config,
-                    args.dataset)
-    return m.cuda()
+    m = get_model(args.model, config, args.dataset)
+    return m.to(device)
 
 def gen_id(config):
     return "{}_{}_{}_{}_{}-{:03d}".format(

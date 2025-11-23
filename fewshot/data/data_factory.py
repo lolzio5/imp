@@ -15,6 +15,11 @@ def RegisterDataset(dataset_name):
 
 
 def get_data_folder(data_root, dataset_name):
+  # If no data_root provided, default to the repository root (two levels up from this file).
+  if data_root is None:
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    data_root = repo_root
+
   data_folder = os.path.join(data_root, dataset_name)
   return data_folder
 

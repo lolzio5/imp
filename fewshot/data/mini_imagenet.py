@@ -5,7 +5,6 @@ import os
 import pickle as pkl
 import scipy
 import h5py
-from scipy.misc import imread, imresize
 
 from collections import namedtuple
 from tqdm import tqdm
@@ -121,12 +120,15 @@ class MiniImageNetDataset(RefinementMetaDataset):
       csv_reader = csv.reader(csv_file)
       for (image_filename, class_name) in csv_reader:
         if 'label' not in class_name:
-          img = imresize(
-                  imread(self.images_path + image_filename), (self.n_input,
-                                                              self.n_input, 3))
-          #img = np.rollaxis(img, 2)
+          # Read image with OpenCV and convert BGR->RGB, then resize to square
+          img_path = os.path.join(self.images_path, image_filename)
+          img = cv2.imread(img_path)
+          if img is None:
+            raise IOError('Could not read image: {}'.format(img_path))
+          img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+          img = cv2.resize(img, (self.n_input, self.n_input), interpolation=cv2.INTER_AREA)
 
-          img_data.append(img)          
+          img_data.append(img)
           if class_name not in label_str:
             label_str.append(class_name)
           labels.append(label_str.index(class_name))
@@ -144,14 +146,11 @@ class MiniImageNetDataset(RefinementMetaDataset):
     h_file.close()
 
   def get_label_split_path(self):
-  	   splitfile = os.path.join(self._folder, "mini-imagenet-labelsplit-" +
-                       self._split + "-{}.pkl".format(self._seed))
-  	   return splitfile
-
+    splitfile = os.path.join(self._folder, "mini-imagenet-labelsplit-" + self._split + "-{}.pkl".format(self._seed))
+    return splitfile
 
   def save_label_split(self):
     np.savetxt(self.get_label_split_path(), self._label_split_idx, fmt='%d')
-
 
   def reset(self):
     self._rnd = np.random.RandomState(self._seed)
