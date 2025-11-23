@@ -170,7 +170,7 @@ def train(config,
             dataset = meta_dataset.next_episode(within_category=args.super_classes)
 
         if args.accumulation_steps > 1:
-            classes = np.random.choice(range(0, total_classes), args.nclasses_episode, replace=False)
+            classes = np.random.choice(list(range(0, total_classes)), args.nclasses_episode, replace=False)
             batch = dataset.next_batch_separate(classes, args.nclasses_episode)
         else:
             batch = dataset.next_batch()

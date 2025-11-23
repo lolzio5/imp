@@ -27,8 +27,7 @@ class BasicConfig(object):
     self.lr_decay_steps = [4000,6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000]#6000, 8000, 4000, 
     self.max_train_steps = 20000
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x,
-            range(len(self.lr_decay_steps))))
+        [self.learn_rate * (0.5)**x for x in range(len(self.lr_decay_steps))])
 
 @RegisterConfig("omniglot", "kmeans-refine")
 class KMeansRefineConfig(BasicConfig):

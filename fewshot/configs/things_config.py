@@ -50,8 +50,8 @@ class BasicConfig(object):
     self.max_train_steps = 200000
     self.lr_decay_steps = list(range(0, self.max_train_steps, 25000)[1:])
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x, range(
-            len(self.lr_decay_steps))))
+        [self.learn_rate * (0.5)**x for x in range(
+            len(self.lr_decay_steps))])
     self.similarity = "euclidean"
 
 
@@ -90,9 +90,8 @@ class BasicPretrainConfig(BasicConfig):
     self.max_train_steps = 4000
     self.lr_decay_steps = [2000, 2500, 3000, 3500]
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x,
-            range(1,
-                  len(self.lr_decay_steps) + 1)))
+        [self.learn_rate * (0.5)**x for x in range(1,
+                  len(self.lr_decay_steps) + 1)])
     self.similarity = "euclidean"
 
 

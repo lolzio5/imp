@@ -48,13 +48,12 @@ class BasicConfig(object):
     self.learn_rate = 5e-4
     self.step_lr_every = 10000#mult*6000, 
     self.max_train_steps = mult*200000
-    self.lr_decay_steps = range(20000, self.max_train_steps, self.step_lr_every)[1:]
+    self.lr_decay_steps = list(range(20000, self.max_train_steps, self.step_lr_every))[1:]
     #self.lr_decay_steps = [mult*4000, mult*5000, mult*6000, mult*7000, mult*8000, mult*9000, mult*10000, mult*11000, mult*12000, mult*13000, mult*14000, mult*15000, 
     #mult*16000, mult*17000, mult*18000, mult*19000, mult*20000]
     
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x,
-            range(len(self.lr_decay_steps))))
+        [self.learn_rate * (0.5)**x for x in range(len(self.lr_decay_steps))])
 
 @RegisterConfig("cifar", "protonet")
 class BasicTestConfig(BasicConfig):

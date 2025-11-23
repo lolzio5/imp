@@ -98,8 +98,8 @@ class MiniImageNetDataset(RefinementMetaDataset):
       self._label_split_idx = np.loadtxt(cache_path_labelsplit, dtype=np.int64)
     else:
       if self._split in ['train', 'trainval']:
-        print('Use {}% image for labeled split.'.format(
-            int(self._label_ratio * 100)))
+        print(('Use {}% image for labeled split.'.format(
+            int(self._label_ratio * 100))))
         self._label_split_idx = self.label_split()
       elif self._split in ['val', 'test']:
         print('Use all image in labeled split, since we are in val/test')

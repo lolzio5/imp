@@ -93,7 +93,7 @@ class IMPModel(Protonet):
             class_logits = torch.ones_like(logits.data) * float('-Inf')
             class_logits[class_mask.repeat(logits.size(0), 1)] = logits[class_mask].data.view(logits.size(0), -1)
             _, best_in_class = torch.max(class_logits, dim=1)
-            weights[range(0, targets.size(0)), best_in_class] = 1.
+            weights[list(range(0, targets.size(0))), best_in_class] = 1.
         loss = weighted_loss(logits, Variable(best_targets), Variable(weights))
         return loss.mean()
 

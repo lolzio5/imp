@@ -28,8 +28,8 @@ class BasicConfig(object):
     self.max_train_steps = 200000
     self.lr_decay_steps = list(range(0, self.max_train_steps, 25000)[1:])
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x, range(
-            len(self.lr_decay_steps))))
+        [self.learn_rate * (0.5)**x for x in range(
+            len(self.lr_decay_steps))])
 
 @RegisterConfig("tiered-imagenet", "kmeans-refine")
 class KMeansRefineConfig(BasicConfig):

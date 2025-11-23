@@ -64,8 +64,8 @@ def read_lake_split(folder, aug_90=False):
       else:
          label_str.append(sf + '_' + character)
          category_labels.append(sf)
-  print('Number of classes {}'.format(len(label_str)))
-  print('Number of images {}'.format(len(data)))
+  print(('Number of classes {}'.format(len(label_str))))
+  print(('Number of images {}'.format(len(data))))
   images = np.concatenate(data, axis=0)
   labels = np.array(label_idx, dtype=np.int32)
   label_str = label_str
@@ -74,7 +74,7 @@ def read_lake_split(folder, aug_90=False):
 def read_vinyals_split(folder, split_file, aug_90=False, merged=False):
   """Reads dataset from a folder with a split file."""
   lines = open(split_file, 'r').readlines()
-  lines = map(lambda x: x.strip('\n\r'), lines)
+  lines = [x.strip('\n\r') for x in lines]
   label_idx = []
   label_str = []
   data = []
@@ -109,8 +109,8 @@ def read_vinyals_split(folder, split_file, aug_90=False, merged=False):
     else:
        label_str.append(ff)
        category_labels.append(ff)
-  print('Number of classes {}'.format(len(label_str)))
-  print('Number of images {}'.format(len(data)))
+  print(('Number of classes {}'.format(len(label_str))))
+  print(('Number of images {}'.format(len(data))))
   images = np.concatenate(data, axis=0)
   labels = np.array(label_idx, dtype=np.int32)
   return images, labels, label_str, category_labels
@@ -174,7 +174,7 @@ class OmniglotDataset(RefinementMetaDataset):
   def process_category_labels(self, labels):
     i = 0
     mydict = {}
-    if isinstance(labels[0], basestring):
+    if isinstance(labels[0], str):
       for item in labels:
         if '/' in item:
           item = item.split('/')[0]
@@ -204,7 +204,7 @@ class OmniglotDataset(RefinementMetaDataset):
           self._images = data[b'images']
           self._labels = data[b'labels']
           self._label_str = data[b'label_str']
-          if b'category_labels' in data.keys():
+          if b'category_labels' in list(data.keys()):
             self._category_labels = data[b'category_labels']
           else:
             self._category_labels = None
@@ -213,7 +213,7 @@ class OmniglotDataset(RefinementMetaDataset):
           self._images = data['images']
           self._labels = data['labels']
           self._label_str = data['label_str']
-          if b'category_labels' in data.keys():
+          if b'category_labels' in list(data.keys()):
             self._category_labels = data[b'category_labels']
           else:
             self._category_labels = None
@@ -231,8 +231,8 @@ class OmniglotDataset(RefinementMetaDataset):
       self._label_split_idx = np.loadtxt(cache_path_labelsplit, dtype=np.int64)
     else:
       if self._split in ['train', 'trainval']:
-        print('Use {}% image for labeled split.'.format(
-            int(self._label_ratio * 100)))
+        print(('Use {}% image for labeled split.'.format(
+            int(self._label_ratio * 100))))
         self._label_split_idx = self.label_split()
       elif self._split in ['val', 'test']:
         print('Use all image in labeled split, since we are in val/test')

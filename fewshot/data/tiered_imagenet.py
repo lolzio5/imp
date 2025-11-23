@@ -86,7 +86,7 @@ class TieredImageNetDataset(RefinementMetaDataset):
   def process_category_labels(self, labels):
     i = 0
     mydict = {}
-    if isinstance(labels[0], basestring):
+    if isinstance(labels[0], str):
       for item in labels:
         if(i>0 and item in mydict):
           continue
@@ -229,7 +229,7 @@ class TieredImageNetDataset(RefinementMetaDataset):
     specific_label, general_label = [], []
     csv_path = os.path.join(self._splits_folder, self._split + '.csv')
     with open(csv_path, 'r') as csvfile:
-      csvreader = csv.reader(csvfile, delimiter=str(u','), quotechar=str(u'|'))
+      csvreader = csv.reader(csvfile, delimiter=str(','), quotechar=str('|'))
       for i, row in enumerate(csvreader):
         # Sometimes there's an empty row at the bottom
         if len(row) == 0:
@@ -258,7 +258,7 @@ class TieredImageNetDataset(RefinementMetaDataset):
       for synset in tqdm(synset_dirs, desc="Reading dataset..."):
         if not synset in specific_classes:
           continue
-        for cat, synset_list in self._catcode_to_syncode.iteritems():
+        for cat, synset_list in self._catcode_to_syncode.items():
           if synset in synset_list:
             break
         synset_dir_path = os.path.join(self._imagenet_train_folder, synset)
@@ -307,7 +307,7 @@ class TieredImageNetDataset(RefinementMetaDataset):
     csv_path = os.path.join(self._splits_folder, self._split + '.csv')
 
     with open(csv_path, 'r') as csvfile:
-      csvreader = csv.reader(csvfile, delimiter=str(u','), quotechar=str(u'|'))
+      csvreader = csv.reader(csvfile, delimiter=str(','), quotechar=str('|'))
       for i, row in enumerate(csvreader):
         # Sometimes there's an empty row at the bottom
         if len(row) == 0:

@@ -55,8 +55,7 @@ class BasicConfig(object):
     #mult*16000, mult*17000, mult*18000, mult*19000, mult*20000]
     self.max_train_steps = mult*20000
     self.lr_list = list(
-        map(lambda x: self.learn_rate * (0.5)**x,
-            range(len(self.lr_decay_steps))))
+        [self.learn_rate * (0.5)**x for x in range(len(self.lr_decay_steps))])
 
 @RegisterConfig("svhn", "protonet")
 class BasicTestConfig(BasicConfig):

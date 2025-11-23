@@ -1,5 +1,5 @@
 import subprocess
-from StringIO import StringIO
+from io import StringIO
 import pandas as pd
 import os
 import torch
@@ -31,8 +31,8 @@ def get_free_gpu():
     gpu_df = pd.read_csv(StringIO(gpu_stats),
                          names=['memory.used', 'memory.free'],
                          skiprows=1)
-    print('GPU usage:\n{}'.format(gpu_df))
+    print(('GPU usage:\n{}'.format(gpu_df)))
     gpu_df['memory.free'] = gpu_df['memory.free'].map(lambda x: x.rstrip(' [MiB]'))
     idx = gpu_df['memory.free'].astype(float).idxmax()
-    print('Returning GPU{} with {} free MiB'.format(idx, gpu_df.iloc[idx]['memory.free']))
+    print(('Returning GPU{} with {} free MiB'.format(idx, gpu_df.iloc[idx]['memory.free'])))
     return idx

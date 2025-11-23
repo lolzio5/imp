@@ -57,9 +57,7 @@ class RefinementMetaDataset(object):
     self._label_split_idx = np.array(self._label_split_idx)
     self._rnd.shuffle(self._label_split_idx)
     self._label_split_idx_set = set(list(self._label_split_idx))
-    self._unlabel_split_idx = list(filter(
-        lambda _idx: _idx not in self._label_split_idx_set,
-        range(self._labels.shape[0])))
+    self._unlabel_split_idx = list([_idx for _idx in range(self._labels.shape[0]) if _idx not in self._label_split_idx_set])
 
     self._rnd.shuffle(self._unlabel_split_idx)
 
@@ -85,9 +83,9 @@ class RefinementMetaDataset(object):
       ids = ex_ids[self._labels == class_name]
       # Split the image IDs into labeled and unlabeled.
       _label_ids = list(
-          filter(lambda _id: _id in self._label_split_idx_set, ids))
+          [_id for _id in ids if _id in self._label_split_idx_set])
       _unlabel_ids = list(
-          filter(lambda _id: _id not in self._label_split_idx_set, ids))
+          [_id for _id in ids if _id not in self._label_split_idx_set])
 
       self.class_dict[class_name] = {
             'lbl': _label_ids,
@@ -101,7 +99,7 @@ class RefinementMetaDataset(object):
     Returns:
       labeled_split: List of int.
     """
-    print('Label split using seed {:d}'.format(self._seed))
+    print(('Label split using seed {:d}'.format(self._seed)))
     rnd = np.random.RandomState(self._seed)
     num_cats = len(np.unique(self._category_labels))
 
@@ -111,7 +109,7 @@ class RefinementMetaDataset(object):
       self.coarse_labels[sup].append(sub)
     for sup in range(0, len(self.coarse_labels)):
       mode_split.extend(list(np.random.choice(self.coarse_labels[sup],max(1,int(self._mode_ratio*len(self.coarse_labels[sup]))),replace=False)))
-    print("Mode split {}".format(len(mode_split)))
+    print(("Mode split {}".format(len(mode_split))))
     return sorted(mode_split)
 
   def read_mode_split(self):
@@ -120,8 +118,8 @@ class RefinementMetaDataset(object):
       self._class_train_set = np.loadtxt(cache_path_modesplit, dtype=np.int64)
     else:
       if self._split in ['train', 'trainval']:
-        print('Use {}% image for mode split.'.format(
-            int(self._mode_ratio * 100)))
+        print(('Use {}% image for mode split.'.format(
+            int(self._mode_ratio * 100))))
         self._class_train_set = self.mode_split()
       elif self._split in ['val', 'test']:
         print('Use all image in mode split, since we are in val/test')
@@ -151,7 +149,7 @@ class RefinementMetaDataset(object):
   def process_category_labels(self, labels):
     i = 0
     mydict = {}
-    if isinstance(labels[0], basestring):
+    if isinstance(labels[0], str):
       for item in labels:
         if '/' in item:
           item = item.split('/')[0]
@@ -187,7 +185,7 @@ class RefinementMetaDataset(object):
 
   def shuffle_labels(self):
     # Build a set for quick query.
-    for cc in self._label_idict.keys():
+    for cc in list(self._label_idict.keys()):
       self._rnd.shuffle(self._label_idict[cc])
 
 
@@ -200,7 +198,7 @@ class RefinementMetaDataset(object):
     Returns:
       labeled_split: List of int.
     """
-    print('Label split using seed {:d}'.format(self._seed))
+    print(('Label split using seed {:d}'.format(self._seed)))
     rnd = np.random.RandomState(self._seed)
     num_label_cls = len(self._label_str)
     num_ex = self._labels.shape[0]
@@ -211,14 +209,14 @@ class RefinementMetaDataset(object):
       cids = ex_ids[self._labels == cc]
       rnd.shuffle(cids)
       labeled_split.extend(cids[:int(len(cids) * self._label_ratio)])
-    print("Total number of classes {}".format(num_label_cls))
-    print("Labeled split {}".format(len(labeled_split)))
-    print("Total image {}".format(num_ex))
+    print(("Total number of classes {}".format(num_label_cls)))
+    print(("Labeled split {}".format(len(labeled_split))))
+    print(("Total image {}".format(num_ex)))
     return sorted(labeled_split)
 
   def filter_classes(self, class_seq):
     idxs = list(
-          filter(lambda _id: self._label_general[_id] in self.okay_classes[self._split], class_seq))
+          [_id for _id in class_seq if self._label_general[_id] in self.okay_classes[self._split]])
     return idxs
 
   def next_episode(self, within_category=False):
@@ -233,10 +231,10 @@ class RefinementMetaDataset(object):
     if self._mode_ratio < 1.0:
       if self._train_modes:
         self.class_seq = list(
-              filter(lambda _id: _id in self._class_train_set, range(0, num_label_cls)))
+              [_id for _id in range(0, num_label_cls) if _id in self._class_train_set])
       else:
         self.class_seq = list(
-          filter(lambda _id: _id not in self._class_train_set, range(0, num_label_cls)))
+          [_id for _id in range(0, num_label_cls) if _id not in self._class_train_set])
     else:
       self.class_seq = np.arange(num_label_cls)
       
@@ -263,7 +261,7 @@ class RefinementMetaDataset(object):
       allowable_inds = np.empty((1))
       for cat_idx in cat_idxs:
         current_inds = np.where(np.array(self._category_labels) == cat_idx)[0]
-        filtered_inds = list(filter(lambda _id: _id in self.class_seq, current_inds))
+        filtered_inds = list([_id for _id in current_inds if _id in self.class_seq])
         self._rnd.shuffle(filtered_inds)
         allowable_inds = np.concatenate((allowable_inds, filtered_inds[0:min(self._nway,len(filtered_inds))]))
       class_seq_i = (allowable_inds[1:]).astype(np.int64)
@@ -284,9 +282,9 @@ class RefinementMetaDataset(object):
 
       # Split the image IDs into labeled and unlabeled.
       _label_ids = list(
-          filter(lambda _id: _id in self._label_split_idx_set, _ids))
+          [_id for _id in _ids if _id in self._label_split_idx_set])
       _unlabel_ids = list(
-          filter(lambda _id: _id not in self._label_split_idx_set, _ids))
+          [_id for _id in _ids if _id not in self._label_split_idx_set])
 
       self._rnd.shuffle(_label_ids)
       self._rnd.shuffle(_unlabel_ids)

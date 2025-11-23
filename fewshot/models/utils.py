@@ -24,7 +24,7 @@ def one_hot(indices, depth, dim=-1, cumulative=True):
     return Variable(out)
 
 def update_params(loss, params_dict, step_size=0.1):
-    params= [v for k,v in params_dict.items()]
+    params= [v for k,v in list(params_dict.items())]
     updated_params = params_dict.copy()
     grads = torch.autograd.grad(loss, params,
         create_graph=False, allow_unused=True)

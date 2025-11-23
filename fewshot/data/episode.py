@@ -51,7 +51,7 @@ class Episode(object):
     test_indices = (np.array(self._test_indices)[test_idxs]).tolist()
 
     if self._y_unlabel is not None and len(self._y_unlabel) > 0:
-      unlabel_indices, unlabel_episode = np.where(self._y_unlabel[:,1][:,None] == np.array(classes.tolist() + range(total_num_classes, total_num_classes + 1+len(classes))))
+      unlabel_indices, unlabel_episode = np.where(self._y_unlabel[:,1][:,None] == np.array(classes.tolist() + list(range(total_num_classes, total_num_classes + 1+len(classes)))))
       x_unlabel = self._x_unlabel[unlabel_indices,:,:,:]
       y_unlabel = self._y_unlabel[unlabel_indices,:]
       unlabel_img_indices = (np.array(self._unlabel_indices)[unlabel_indices]).tolist()
