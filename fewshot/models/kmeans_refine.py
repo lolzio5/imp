@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.basic import Protonet
@@ -22,7 +21,7 @@ class KMeansRefine(Protonet):
         xs = batch.x_train
         xq = batch.x_test
 
-        nClusters = len(np.unique(batch.y_train.data.cpu().numpy()))
+        nClusters = len(np.unique(batch.y_train.detach().cpu().numpy()))
         h_train = self._run_forward(xs)
         h_test = self._run_forward(xq)
 

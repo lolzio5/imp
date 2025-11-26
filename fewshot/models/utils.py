@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
 import pdb
 
 # device helper
@@ -24,7 +23,7 @@ def one_hot(indices, depth, dim=-1, cumulative=True):
     device = indices.device if hasattr(indices, 'device') else DEVICE
     out = torch.zeros(new_size, device=device)
     indices = torch.unsqueeze(indices, dim)
-    out = out.scatter_(dim, indices.type(torch.LongTensor).to(device), 1.0)
+    out = out.scatter_(dim, indices.long().to(device), 1.0)
 
     return out
 
@@ -162,7 +161,7 @@ def assign_cluster_radii_limited(cluster_centers, data, radii, target_labels):
     bsize = logits_shape[0]
     ndata = logits_shape[1]
     ncluster = logits_shape[2]
-    prob = F.softmax(Variable(class_logits), dim=-1)
+    prob = F.softmax(class_logits, dim=-1)
     return prob
 
 def assign_cluster_radii_diag(cluster_centers, data, radii):
@@ -301,14 +300,14 @@ def eval_distractor(pred_non_distractor, gt_non_distractor):
         recall:
         precision:
     """
-    y = gt_non_distractor.type(torch.FloatTensor)
+    y = gt_non_distractor.float()
     pred_distractor = 1.0 - pred_non_distractor
-    non_distractor_correct = torch.eq(pred_non_distractor, y).type(torch.FloatTensor)
+    non_distractor_correct = torch.eq(pred_non_distractor, y).float()
     distractor_tp = pred_distractor * (1.0 - y)
     distractor_recall = torch.sum(distractor_tp) / torch.sum(1 - y)
     distractor_precision = torch.sum(distractor_tp) / (
             torch.sum(pred_distractor) +
-            torch.eq(torch.sum(pred_distractor), 0.0).type(torch.FloatTensor))
+            torch.eq(torch.sum(pred_distractor), 0.0).float())
     acc = torch.mean(non_distractor_correct)
     recall = torch.mean(distractor_recall)
     precision = torch.mean(distractor_precision)

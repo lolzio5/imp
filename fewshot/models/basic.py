@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import torchvision.models as models
-from torch.autograd import Variable
+ 
 
 # select device for model tensors
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -38,13 +38,13 @@ class Protonet(nn.Module):
         if config.learn_sigma_u:
             self.log_sigma_u = nn.Parameter(log_sigma_u, requires_grad=True).to(DEVICE)
         else:
-            self.log_sigma_u = Variable(log_sigma_u, requires_grad=True).to(DEVICE)
+            self.log_sigma_u = log_sigma_u.clone().detach().requires_grad_(True).to(DEVICE)
 
         log_sigma_l = torch.log(torch.FloatTensor([config.init_sigma_l]))
         if config.learn_sigma_l:
             self.log_sigma_l = nn.Parameter(log_sigma_l, requires_grad=True).to(DEVICE)
         else:
-            self.log_sigma_l = Variable(log_sigma_l, requires_grad=True).to(DEVICE)
+            self.log_sigma_l = log_sigma_l.clone().detach().requires_grad_(True).to(DEVICE)
 
         x_dim = [config.num_channel]
         hid_dim = 64
@@ -94,19 +94,19 @@ class Protonet(nn.Module):
     def _process_batch(self, batch, super_classes=False):
         """Convert np arrays to variable"""
         # convert numpy arrays to torch tensors and move to device
-        x_train = torch.from_numpy(batch.x_train).type(torch.FloatTensor).to(DEVICE)
-        x_test = torch.from_numpy(batch.x_test).type(torch.FloatTensor).to(DEVICE)
+        x_train = torch.from_numpy(batch.x_train).float().to(DEVICE)
+        x_test = torch.from_numpy(batch.x_test).float().to(DEVICE)
 
         if batch.x_unlabel is not None and batch.x_unlabel.size > 0:
-            x_unlabel = torch.from_numpy(batch.x_unlabel).type(torch.FloatTensor).to(DEVICE)
+            x_unlabel = torch.from_numpy(batch.x_unlabel).float().to(DEVICE)
             y_unlabel = torch.from_numpy(batch.y_unlabel.astype(np.int64)).to(DEVICE)
         else:
             x_unlabel = None
             y_unlabel = None
 
         if super_classes:
-            labels_train = torch.from_numpy(batch.y_train_str[:,1]).type(torch.LongTensor).unsqueeze(0).to(DEVICE)
-            labels_test = torch.from_numpy(batch.y_test_str[:,1]).type(torch.LongTensor).unsqueeze(0).to(DEVICE)
+            labels_train = torch.from_numpy(batch.y_train_str[:,1]).long().unsqueeze(0).to(DEVICE)
+            labels_test = torch.from_numpy(batch.y_test_str[:,1]).long().unsqueeze(0).to(DEVICE)
         else:
             labels_train = torch.from_numpy(batch.y_train.astype(np.int64)[:,:,1]).to(DEVICE)
             labels_test = torch.from_numpy(batch.y_test.astype(np.int64)[:,:,1]).to(DEVICE)
@@ -208,7 +208,7 @@ class Protonet(nn.Module):
             h = h.view(-1, D)   # [BxN, D]
             proto = torch.mean(h, 0, keepdim=True)
             protos.append(proto)
-        protos = torch.cat(protos, 0).data.cpu().numpy()   # [C, D]
+        protos = torch.cat(protos, 0).detach().cpu().numpy()   # [C, D]
         num_classes = protos.shape[0]
         distances = []
         for i in range(num_classes):

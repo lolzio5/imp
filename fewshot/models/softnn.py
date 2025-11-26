@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
+ 
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.imp import IMPModel
@@ -18,7 +18,7 @@ class SoftNN(IMPModel):
 
         xs = batch.x_train
         xq = batch.x_test
-        y_train_np = batch.y_train.data.cpu().numpy()
+        y_train_np = batch.y_train.detach().cpu().numpy()
 
         #every data point is its own cluster
         nClusters = len(y_train_np[0])
@@ -26,18 +26,18 @@ class SoftNN(IMPModel):
         h_train = self._run_forward(xs)
         h_test = self._run_forward(xq)
 
-        prob_train = one_hot(Variable(torch.arange(0,nClusters)).unsqueeze(0), nClusters).cuda()
+        prob_train = one_hot(torch.arange(0, nClusters).unsqueeze(0), nClusters).to(DEVICE)
         protos = self._compute_protos(h_train, prob_train)
 
         bsize = h_train.size()[0]
-        radii = Variable(torch.ones(bsize, nClusters)).cuda() * torch.exp(self.log_sigma_l)
+        radii = torch.ones(bsize, nClusters).to(DEVICE) * torch.exp(self.log_sigma_l)
 
         support_labels = batch.y_train[0].long()
 
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
 
         # convert class targets into indicators for supports in each class
-        labels = batch.y_test.data
+        labels = batch.y_test
 
         support_targets = labels[0, :, None] == support_labels
         loss = self.loss(logits, support_targets, support_labels)

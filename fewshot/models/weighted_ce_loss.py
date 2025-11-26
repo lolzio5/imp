@@ -16,18 +16,9 @@ def log_sum_exp(value, weights, dim=None, keepdim=False):
 def class_select(logits, target):
     # in numpy, this would be logits[:, target].
     batch_size, num_classes = logits.size()
-    if target.is_cuda:
-        device = target.data.get_device()
-        one_hot_mask = torch.autograd.Variable(torch.arange(0, num_classes)
-                                               .long()
-                                               .repeat(batch_size, 1)
-                                               .cuda(device)
-                                               .eq(target.data.repeat(num_classes, 1).t()))
-    else:
-        one_hot_mask = torch.autograd.Variable(torch.arange(0, num_classes)
-                                               .long()
-                                               .repeat(batch_size, 1)
-                                               .eq(target.data.repeat(num_classes, 1).t()))
+    device = target.device if hasattr(target, 'device') else None
+    one_hot_mask = torch.arange(0, num_classes, device=device)
+    one_hot_mask = one_hot_mask.long().repeat(batch_size, 1).eq(target.repeat(num_classes, 1).t())
     return logits.masked_select(one_hot_mask)
     
 def weighted_loss(logits, targets, weights):

@@ -1,6 +1,6 @@
 # Infinite Mixture Prototypes (Updated Version)
 
-## _Written by Lolézio Viora Marquet_
+## Written by Lolézio Viora Marquet
 
 ## Goal
 

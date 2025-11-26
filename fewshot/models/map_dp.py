@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
+ 
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.imp import IMPModel
@@ -18,7 +18,7 @@ class MapDPModel(IMPModel):
     def __init__(self, config, data):
         super(MapDPModel, self).__init__(config, data)
 
-        self.base_distribution = Variable(torch.zeros(1,1,config.dim)).cuda()
+        self.base_distribution = torch.zeros(1,1,config.dim).to(DEVICE)
 
     def _compute_priors(self, counts):
         """
@@ -30,7 +30,7 @@ class MapDPModel(IMPModel):
         ALPHA = self.config.ALPHA
         nClusters = counts.size()[1]
         crp_prior_old = counts
-        crp_prior_new = Variable(torch.FloatTensor([ALPHA])).cuda()
+        crp_prior_new = torch.tensor([ALPHA], dtype=torch.float32).to(DEVICE)
         crp_prior_new = torch.cat([crp_prior_new.unsqueeze(0)]*nClusters, 1)
         indices = counts.view(-1).nonzero()
         if torch.numel(indices) != 0:
@@ -62,10 +62,10 @@ class MapDPModel(IMPModel):
         bsize = protos.size()[0]
         dimension = protos.size()[2]
 
-        zero_count = Variable(torch.zeros(bsize, 1)).cuda()
+        zero_count = torch.zeros(bsize, 1).to(DEVICE)
         counts = torch.cat([counts, zero_count], dim=1)
 
-        d_radii = Variable(torch.ones(bsize, 1), requires_grad=False).cuda()
+        d_radii = torch.ones(bsize, 1).to(DEVICE).detach()
         d_radii = d_radii*(torch.exp(self.log_sigma_u)+torch.exp(self.log_sigma_l))
 
         new_proto = mu0.clone()
@@ -80,7 +80,7 @@ class MapDPModel(IMPModel):
         xs = batch.x_train
         xq = batch.x_test
 
-        y_train_np = batch.y_train.data.cpu().numpy()
+        y_train_np = batch.y_train.detach().cpu().numpy()
 
         nClusters = len(np.unique(y_train_np))
         shot = int(batch.y_train.shape[1]/nClusters)
@@ -89,13 +89,13 @@ class MapDPModel(IMPModel):
         h_train = self._run_forward(xs)
         h_test = self._run_forward(xq)
 
-        prob_train = one_hot(batch.y_train, nClusters).cuda()
+        prob_train = one_hot(batch.y_train, nClusters).to(DEVICE)
 
         if batch.x_unlabel is None:
             protos_clusters = [self._compute_protos(h_train, prob_train)]
 
         bsize = h_train.size()[0]
-        radii = Variable(torch.ones(bsize, nClusters)).cuda() * torch.exp(self.log_sigma_l)
+        radii = torch.ones(bsize, nClusters).to(DEVICE) * torch.exp(self.log_sigma_l)
 
         target_labels = torch.arange(0, nClusters).long()
         protos = self._compute_protos(h_train[:,:,:], prob_train[:,:,:])
@@ -115,7 +115,7 @@ class MapDPModel(IMPModel):
         for ii in range(self.config.num_cluster_steps):
             if ii == 0:
                 nClusters, protos, counts, radii  = self._add_cluster(nClusters, protos, counts, radii,mu0)
-                total_prob = torch.cat([total_prob, Variable(torch.zeros(total_prob.size()[0], total_prob.size()[1], 1)).cuda()],dim=2)
+                total_prob = torch.cat([total_prob, torch.zeros(total_prob.size(0), total_prob.size(1), 1).to(DEVICE)],dim=2)
                 target_labels = torch.cat([target_labels, torch.LongTensor([-1])],dim=0)
 
             if batch.x_unlabel is not None:
@@ -128,14 +128,14 @@ class MapDPModel(IMPModel):
                     _, max_val = torch.max(cluster_prob,dim=-1)
 
                     if i+h_train.size()[1]>=total_prob.size()[1]:
-                        total_prob = torch.cat([total_prob, one_hot(max_val, nClusters).cuda()],dim=1)
+                        total_prob = torch.cat([total_prob, one_hot(max_val, nClusters).to(DEVICE)],dim=1)
                     else:
-                        total_prob[0,i+h_train.size()[1],:] = one_hot(max_val, nClusters).cuda()
+                        total_prob[0,i+h_train.size()[1],:] = one_hot(max_val, nClusters).to(DEVICE)
 
                     if max_val[0].item() == nClusters:
                         nClusters, protos, counts, radii  = self._add_cluster(nClusters, protos, counts, radii, mu0)
                         target_labels = torch.cat([target_labels, torch.LongTensor([-1])],dim=0)
-                        total_prob = torch.cat([total_prob, Variable(torch.zeros(total_prob.size()[0], total_prob.size()[1], 1)).cuda()],dim=2)
+                        total_prob = torch.cat([total_prob, torch.zeros(total_prob.size(0), total_prob.size(1), 1).to(DEVICE)],dim=2)
                     
 
         final_prob = total_prob.detach()
@@ -146,15 +146,15 @@ class MapDPModel(IMPModel):
         logits = compute_logits_radii_crp(protos, h_test, radii, priors).squeeze()
 
         # convert class targets into indicators for supports in each class
-        labels = batch.y_test.data
+        labels = batch.y_test
         labels[labels >= nInitialClusters] = -1
 
-        support_targets = labels[0, :, None] == target_labels.cuda()
-        loss = self.loss(logits, support_targets, target_labels.cuda())
+        support_targets = labels[0, :, None] == target_labels.to(DEVICE)
+        loss = self.loss(logits, support_targets, target_labels.to(DEVICE))
 
         # map support predictions back into classes to check accuracy
-        _, support_preds = torch.max(logits.data, dim=1)
-        y_pred = target_labels.cuda()[support_preds]
+        _, support_preds = torch.max(logits.detach(), dim=1)
+        y_pred = target_labels.to(DEVICE)[support_preds]
 
         acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 

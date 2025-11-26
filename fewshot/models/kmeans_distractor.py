@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
+ 
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.imp import IMPModel
@@ -17,7 +17,7 @@ class KMeansDistractorModel(IMPModel):
     def __init__(self, config, data):
         super(KMeansDistractorModel, self).__init__(config, data)
 
-        self.base_distribution = Variable(0*torch.randn(1, 1, config.dim)).cuda()
+        self.base_distribution = (0*torch.randn(1, 1, config.dim)).to(DEVICE)
 
     def _add_cluster(self, nClusters, protos, radii, cluster_type='unlabeled'):
         """
@@ -33,12 +33,12 @@ class KMeansDistractorModel(IMPModel):
         bsize = protos.size()[0]
         dimension = protos.size()[2]
 
-        new_proto = Variable(self.base_distribution.data).cuda()
+        new_proto = self.base_distribution.clone().detach().to(DEVICE)
 
         protos = torch.cat([protos, new_proto], dim=1)
-        zero_count = Variable(torch.zeros(bsize, 1)).cuda()
+        zero_count = torch.zeros(bsize, 1).to(DEVICE)
 
-        d_radii = Variable(torch.ones(bsize, 1), requires_grad=True).cuda()
+        d_radii = torch.ones(bsize, 1).to(DEVICE).requires_grad_(True)
 
         if cluster_type == 'unlabeled':
             d_radii = d_radii * torch.exp(self.log_sigma_u)
@@ -57,22 +57,22 @@ class KMeansDistractorModel(IMPModel):
     def forward(self, sample, super_classes=False):
         batch = self._process_batch(sample, super_classes=super_classes)
 
-        nClusters = len(np.unique(batch.y_train.data.cpu().numpy()))
+        nClusters = len(np.unique(batch.y_train.detach().cpu().numpy()))
         nClustersInitial = nClusters
 
         h_train = self._run_forward(batch.x_train)
         h_test = self._run_forward(batch.x_test)
 
-        prob_train = one_hot(batch.y_train, nClusters).cuda()
+        prob_train = one_hot(batch.y_train, nClusters).to(DEVICE)
 
         protos = self._compute_protos(h_train, prob_train)
 
         bsize = h_train.size()[0]
 
-        radii = torch.exp(self.log_sigma_l) * Variable(torch.ones(bsize, nClusters), requires_grad=False).cuda()
+        radii = torch.exp(self.log_sigma_l) * torch.ones(bsize, nClusters).to(DEVICE).detach()
 
-        support_labels = torch.arange(0, nClusters).cuda().long()
-        unlabeled_flag = torch.LongTensor([-1]).cuda()
+        support_labels = torch.arange(0, nClusters).to(DEVICE).long()
+        unlabeled_flag = torch.LongTensor([-1]).to(DEVICE)
 
         #deal with semi-supervised data
         if batch.x_unlabel is not None:
@@ -81,14 +81,14 @@ class KMeansDistractorModel(IMPModel):
 
             #add in distractor cluster centered at zero
             nClusters, protos, radii = self._add_cluster(nClusters, protos, radii, 'unlabeled')
-            prob_train = one_hot(batch.y_train, nClusters).cuda()
+            prob_train = one_hot(batch.y_train, nClusters).to(DEVICE)
             support_labels = torch.cat([support_labels, unlabeled_flag], dim=0)
 
             #perform some clustering steps
             for ii in range(self.config.num_cluster_steps):
 
                 prob_unlabel = assign_cluster_radii(protos, h_unlabel, radii)
-                prob_unlabel_nograd = Variable(prob_unlabel.data, requires_grad=False).cuda()
+                prob_unlabel_nograd = prob_unlabel.detach().to(DEVICE)
 
                 prob_all = torch.cat([prob_train, prob_unlabel_nograd], dim=1)
                 protos = self._compute_protos(h_all, prob_all)
@@ -96,14 +96,14 @@ class KMeansDistractorModel(IMPModel):
 
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
 
-        labels = batch.y_test.data
+        labels = batch.y_test
         labels[labels >= nClustersInitial] = -1
 
         support_targets = labels[0, :, None] == support_labels
         loss = self.loss(logits, support_targets, support_labels)
 
         # map support predictions back into classes to check accuracy
-        _, support_preds = torch.max(logits.data, dim=1)
+        _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = support_labels[support_preds]
 
         acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
