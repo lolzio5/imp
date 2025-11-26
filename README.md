@@ -50,7 +50,7 @@ To be compatible with [R4RR](https://github.com/Giotto-maker/r4rr/tree/main), th
 6. Run test on all datasets (script that runs all datasets)
    - `powershell -ExecutionPolicy Bypass -File .\scripts\run_all_models.ps1 -Mode quick`
 
----
+--
 
 # Infinite Mixture Prototypes
 

@@ -89,6 +89,13 @@ parser.add_argument('--super-classes', action='store_true', default=False,
                                         help='Use super-class labels')
 parser.add_argument('--pretrain', default=None,
                                         help='folder of the model to load')
+# parser.add_argument('--split-def', type=str, default='lake',
+#                     choices=['lake', 'vinyals'],
+#                     help='Dataset split definition: lake (character-level) or vinyals (alphabet-level)')
+
+# parser.add_argument('--train-ratio', type=float, default=0.4, metavar='N',
+#                     help='Fraction of data in the training set (remaining used for testing)')
+
 args = parser.parse_args()
 
 # Determine device: prefer CUDA if available and not explicitly disabled by CUDA_VISIBLE_DEVICES
@@ -281,7 +288,25 @@ def main(args):
         train(config, m, optimizer, meta_train_dataset, meta_val_dataset=meta_test_dataset)
 
     output = evaluate(m, meta_test_dataset, num_episodes=args.num_eval_episode)
-    print(np.mean(output['acc']), (output['acc_ci']))
+    acc_mean = float(output['acc'])
+    acc_ci = float(output['acc_ci'])
+    print(acc_mean, acc_ci)
+
+    # Write machine-readable accuracy to a file inside the results folder.
+    # Appends: <seed> <accuracy> <accuracy_ci>\n
+    try:
+        os.makedirs(args.results, exist_ok=True)
+    except TypeError:
+        # Python2 compatibility fallback (not expected, but safe)
+        if not os.path.exists(args.results):
+            os.makedirs(args.results)
+
+    result_file = os.path.join(args.results, 'accuracies.txt')
+    try:
+        with open(result_file, 'a') as rf:
+            rf.write("{} {} {}\n".format(args.seed, acc_mean, acc_ci))
+    except Exception as e:
+        print('Failed to write accuracy to file:', e)
 
 
 if __name__ == "__main__":
