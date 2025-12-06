@@ -13,19 +13,37 @@ def preprocess_batch(batch):
                 x_unlabel = batch.x_unlabel
 
         x_train = np.expand_dims(x_train, 0)
-        y_train = np.expand_dims(batch.y_train, 0)
         x_test = np.expand_dims(x_test, 0)
-        y_test = np.expand_dims(batch.y_test, 0)
         if batch.x_unlabel is not None:
             x_unlabel = np.expand_dims(x_unlabel, 0)
             x_unlabel = np.rollaxis(x_unlabel, 4, 2)
         else:
             x_unlabel = None
+    else:
+        x_train = batch.x_train
+        x_test = batch.x_test
+        x_unlabel = batch.x_unlabel
 
-        if hasattr(batch, 'y_unlabel') and batch.y_unlabel is not None:
+    # Handle labels separately - add batch dimension if needed
+    if len(batch.y_train.shape) == 2:
+        y_train = np.expand_dims(batch.y_train, 0)
+        # Handle edge case where y_test is empty 1D array
+        if len(batch.y_test.shape) == 1:
+            # Empty array - reshape to (0, 2) before expanding
+            y_test = np.expand_dims(batch.y_test.reshape(0, 2), 0)
+        else:
+            y_test = np.expand_dims(batch.y_test, 0)
+    else:
+        y_train = batch.y_train
+        y_test = batch.y_test
+
+    if hasattr(batch, 'y_unlabel') and batch.y_unlabel is not None:
+        if len(batch.y_unlabel.shape) == 2:
             y_unlabel = np.expand_dims(batch.y_unlabel, 0)
         else:
-            y_unlabel = None
+            y_unlabel = batch.y_unlabel
+    else:
+        y_unlabel = None
 
     x_train = np.rollaxis(x_train, 4, 2)
     x_test = np.rollaxis(x_test, 4, 2)

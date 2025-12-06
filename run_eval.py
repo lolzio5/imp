@@ -124,9 +124,10 @@ def evaluate(model, meta_dataset, num_episodes=500):
         dataset = meta_dataset.next_episode(within_category=args.super_classes)
 
         batch = preprocess_batch(dataset)
- 
+
         loss, output = model(batch, super_classes=args.super_classes)
-        all_acc.append(output['acc'])   # [B, N, K]
+        # Convert CUDA tensor to Python scalar for numpy compatibility in PyTorch 1.x
+        all_acc.append(output['acc'].cpu().item() if hasattr(output['acc'], 'cpu') else output['acc'])
 
     return {'acc': np.mean(all_acc), 'acc_ci': np.std(all_acc) * 1.96 / np.sqrt(num_episodes), 'hit': 1}
 
@@ -186,7 +187,7 @@ def train(config,
         loss, output = model(batch, super_classes=args.super_classes)
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm(model.parameters(),clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),clip)
 
         if (niter+1) % args.accumulation_steps == 0:
             optimizer.step()

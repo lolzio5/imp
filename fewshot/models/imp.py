@@ -59,14 +59,14 @@ class IMPModel(Protonet):
             sigma = torch.exp(self.log_sigma_l).item()
 
         alpha = self.config.ALPHA
-        lamda = -2*sigma*np.log(self.config.ALPHA) + self.config.dim*sigma*np.log(1+rho/sigma)
+        lamda = -2*sigma*np.log(self.config.ALPHA) + self.config.dim*sigma*torch.log(1+rho/sigma)
 
         return lamda
 
     def delete_empty_clusters(self, tensor_proto, prob, radii, targets, eps=1e-3):
         column_sums = torch.sum(prob[0],dim=0).detach()
         good_protos = column_sums > eps
-        idxs = torch.nonzero(good_protos).squeeze()
+        idxs = good_protos.nonzero(as_tuple=False).view(-1)
         return tensor_proto[:, idxs, :], radii[:, idxs], targets[idxs]
 
     def loss(self, logits, targets, labels):
@@ -79,21 +79,27 @@ class IMPModel(Protonet):
             weighted cross entropy such that we have an "or" function
             across prototypes in the class of each query
         """
-        targets = targets.to(DEVICE)
+        targets = targets.to(DEVICE).long()
+        
         # determine index of closest in-class prototype for each query
         target_logits = torch.ones_like(logits) * float('-Inf')
-        target_logits[targets] = logits.detach()[targets]
+        #target_logits.scatter_(2, targets.unsqueeze(2), logits.detach())
+        # targets is [B, N, nClusters] boolean tensor
+        # We need to convert it to indices [B, N, 1]
+        target_indices = targets.long().argmax(dim=1, keepdim=True)  # [N, 1]
+        target_logits.scatter_(1, target_indices, logits.detach())
+        #target_logits[targets] = logits.detach()[targets]
         _, best_targets = torch.max(target_logits, dim=1)
         # mask out everything...
         weights = torch.zeros_like(logits)
         # ...then include the closest prototype in each class and unlabeled)
         unique_labels = np.unique(labels.cpu().numpy())
         for l in unique_labels:
-            class_mask = labels == l
+            class_mask = (labels == l)
             class_logits = torch.ones_like(logits) * float('-Inf')
-            class_logits[class_mask.repeat(logits.size(0), 1)] = logits[class_mask].detach().view(logits.size(0), -1)
+            class_logits[:, class_mask] = logits[:, class_mask].detach()
             _, best_in_class = torch.max(class_logits, dim=1)
-            weights[list(range(0, targets.size(0))), best_in_class] = 1.
+            weights[torch.arange(logits.size(0), device=logits.device), best_in_class] = 1.
         loss = weighted_loss(logits, best_targets, weights)
         return loss.mean()
 
@@ -128,15 +134,19 @@ class IMPModel(Protonet):
             tensor_proto = protos.detach()
             #iterate over labeled examples to reassign first
             for i, ex in enumerate(h_train[0]):
-                idxs = torch.nonzero(batch.y_train.detach()[0, i] == support_labels)[0]
+                idxs = torch.where(batch.y_train.detach()[0, i] == support_labels)[0]
                 distances = self._compute_distances(tensor_proto[:, idxs, :], ex.detach())
                 if (torch.min(distances) > lamda):
                     nClusters, tensor_proto, radii  = self._add_cluster(nClusters, tensor_proto, radii, cluster_type='labeled', ex=ex.detach())
-                    support_labels = torch.cat([support_labels, batch.y_train[0, i].detach()], dim=0)
+                    support_labels = torch.cat([
+                        support_labels,
+                        batch.y_train.detach()[0, i].to(DEVICE).unsqueeze(0).long()
+                    ], dim=0)
 
             #perform partial reassignment based on newly created labeled clusters
             if nClusters > nInitialClusters:
                 support_targets = batch.y_train.detach()[0, :, None] == support_labels
+                support_targets = support_targets.unsqueeze(0)
                 prob_train = assign_cluster_radii_limited(tensor_proto.to(DEVICE), h_train, radii, support_targets)
 
             nTrainClusters = nClusters
@@ -169,11 +179,11 @@ class IMPModel(Protonet):
                 protos = self._compute_protos(h_train, prob_train.detach().to(DEVICE))
                 protos, radii, support_labels = self.delete_empty_clusters(protos, prob_train, radii, support_labels)
 
-        logits = compute_logits_radii(protos, h_test, radii).squeeze()
+        logits = compute_logits_radii(protos, h_test, radii).squeeze(0)
 
         # convert class targets into indicators for supports in each class
         labels = batch.y_test
-        labels[labels >= nInitialClusters] = -1
+        labels = torch.where(labels >= nInitialClusters, torch.tensor(-1, device=labels.device, dtype=labels.dtype), labels)
 
         support_targets = labels[0, :, None] == support_labels
         loss = self.loss(logits, support_targets, support_labels)
@@ -182,7 +192,11 @@ class IMPModel(Protonet):
         _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = support_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        # Handle case where test set is empty (can happen in some episodes)
+        if labels.size(1) == 0:
+            acc_val = torch.tensor(0.0, device=labels.device)
+        else:
+            acc_val = torch.eq(y_pred, labels[0]).float().mean()
 
         return loss, {
             'loss': loss.item(),

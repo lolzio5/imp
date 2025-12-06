@@ -32,12 +32,9 @@ class MapDPModel(IMPModel):
         crp_prior_old = counts
         crp_prior_new = torch.tensor([ALPHA], dtype=torch.float32).to(DEVICE)
         crp_prior_new = torch.cat([crp_prior_new.unsqueeze(0)]*nClusters, 1)
-        indices = counts.view(-1).nonzero()
-        if torch.numel(indices) != 0:
-            values = torch.masked_select(crp_prior_old, torch.gt(counts, 0.0))
-            crp_priors = crp_prior_new.put_(indices, values) #if going for uniform, can switch values to torch.ones_like(values)
-        else:
-            crp_priors = crp_prior_new
+        # Replace values where counts > 0 with crp_prior_old, otherwise use crp_prior_new
+        mask = counts > 0
+        crp_priors = torch.where(mask, crp_prior_old, crp_prior_new)
 
         return crp_priors
 
@@ -147,7 +144,7 @@ class MapDPModel(IMPModel):
 
         # convert class targets into indicators for supports in each class
         labels = batch.y_test
-        labels[labels >= nInitialClusters] = -1
+        labels = torch.where(labels >= nInitialClusters, torch.tensor(-1, device=labels.device, dtype=labels.dtype), labels)
 
         support_targets = labels[0, :, None] == target_labels.to(DEVICE)
         loss = self.loss(logits, support_targets, target_labels.to(DEVICE))
@@ -156,7 +153,11 @@ class MapDPModel(IMPModel):
         _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = target_labels.to(DEVICE)[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
+        # Handle case where test set is empty (can happen in some episodes)
+        if labels.size(1) == 0:
+            acc_val = 0.0
+        else:
+            acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
             'loss': loss.item(),

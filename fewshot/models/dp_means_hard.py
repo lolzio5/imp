@@ -90,7 +90,7 @@ class DPMeansHardModel(IMPModel):
         
         # convert class targets into indicators for supports in each class
         labels = batch.y_test
-        labels[labels >= nInitialClusters] = -1
+        labels = torch.where(labels >= nInitialClusters, torch.tensor(-1, device=labels.device, dtype=labels.dtype), labels)
 
         support_targets = labels[0, :, None] == target_labels
         loss = self.loss(logits, support_targets, target_labels)
@@ -99,7 +99,11 @@ class DPMeansHardModel(IMPModel):
         _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = target_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
+        # Handle case where test set is empty (can happen in some episodes)
+        if labels.size(1) == 0:
+            acc_val = 0.0
+        else:
+            acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
         return loss, {
             'loss': loss.item(),
             'acc': acc_val,

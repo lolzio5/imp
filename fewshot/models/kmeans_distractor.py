@@ -51,7 +51,7 @@ class KMeansDistractorModel(IMPModel):
     def delete_empty_clusters(self, tensor_proto, prob, radii, eps=1e-6):
         column_sums = torch.sum(prob[0],dim=0).detach()
         good_protos = column_sums > eps
-        idxs = torch.nonzero(good_protos).squeeze()
+        idxs = good_protos.nonzero(as_tuple=False).view(-1)
         return tensor_proto[:,idxs,:], radii[:,idxs]
 
     def forward(self, sample, super_classes=False):
@@ -97,7 +97,7 @@ class KMeansDistractorModel(IMPModel):
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
 
         labels = batch.y_test
-        labels[labels >= nClustersInitial] = -1
+        labels = torch.where(labels >= nClustersInitial, torch.tensor(-1, device=labels.device, dtype=labels.dtype), labels)
 
         support_targets = labels[0, :, None] == support_labels
         loss = self.loss(logits, support_targets, support_labels)
@@ -106,7 +106,11 @@ class KMeansDistractorModel(IMPModel):
         _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = support_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
+        # Handle case where test set is empty (can happen in some episodes)
+        if labels.size(1) == 0:
+            acc_val = 0.0
+        else:
+            acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
             'loss': loss.item(),

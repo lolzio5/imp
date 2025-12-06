@@ -79,11 +79,11 @@ class Protonet(nn.Module):
         def conv_init(m):
             classname = m.__class__.__name__
             if classname.find('Conv') != -1:
-                init.xavier_uniform(m.weight, gain=np.sqrt(2))
-                init.constant(m.bias, 0)
+                init.xavier_uniform_(m.weight, gain=np.sqrt(2))
+                init.constant_(m.bias, 0)
             elif classname.find('BatchNorm') != -1:
-                init.constant(m.weight, 1)
-                init.constant(m.bias, 0)
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
 
         self.encoder = self.encoder.apply(conv_init)
 
@@ -151,10 +151,8 @@ class Protonet(nn.Module):
         h = torch.unsqueeze(h, 2)       # [B, N, 1, D]
         probs = torch.unsqueeze(probs, 3)       # [B, N, nClusters, 1]
         prob_sum = torch.sum(probs, 1)  # [B, nClusters, 1]
-        zero_indices = (prob_sum.view(-1) == 0).nonzero()
-        if torch.numel(zero_indices) != 0:
-            values = torch.masked_select(torch.ones_like(prob_sum), torch.eq(prob_sum, 0.0))
-            prob_sum = prob_sum.put_(zero_indices, values)
+        # Replace zeros with ones to avoid division by zero
+        prob_sum = torch.where(prob_sum == 0, torch.ones_like(prob_sum), prob_sum)
         protos = h*probs    # [B, N, nClusters, D]
         protos = torch.sum(protos, 1)/prob_sum
         return protos

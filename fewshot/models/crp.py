@@ -65,16 +65,13 @@ class CRPModel(Protonet):
         """
         ALPHA = self.config.ALPHA
         nClusters = counts.size()[1]
-        num_examples = torch.sum(counts, 1, keepdim=True)  
+        num_examples = torch.sum(counts, 1, keepdim=True)
         crp_prior_old = torch.ones_like(counts)
         crp_prior_new = torch.tensor([ALPHA], dtype=torch.float32).to(DEVICE)
         crp_prior_new = torch.cat([crp_prior_new.unsqueeze(0)]*nClusters, 1)
-        indices = counts.view(-1).nonzero()
-        if torch.numel(indices) != 0:
-            values = torch.masked_select(crp_prior_old, torch.gt(counts, 0.0))
-            crp_priors = crp_prior_new.put_(indices, values) #if going for uniform, can switch values to torch.ones_like(values)
-        else:
-            crp_priors = crp_prior_new
+        # Replace values where counts > 0 with crp_prior_old, otherwise use crp_prior_new
+        mask = counts > 0
+        crp_priors = torch.where(mask, crp_prior_old, crp_prior_new)
 
         return crp_priors
 

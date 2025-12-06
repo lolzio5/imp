@@ -46,7 +46,11 @@ class SoftNN(IMPModel):
         _, support_preds = torch.max(logits.detach(), dim=1)
         y_pred = support_labels[support_preds]
 
-        acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
+        # Handle case where test set is empty (can happen in some episodes)
+        if labels.size(1) == 0:
+            acc_val = 0.0
+        else:
+            acc_val = torch.eq(y_pred, labels[0]).float().mean().item()
 
         return loss, {
             'loss': loss.item(),
