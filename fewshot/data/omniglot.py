@@ -246,13 +246,12 @@ class OmniglotDataset(RefinementMetaDataset):
       if self._split in ['train', 'trainval']:
         print(('Use {}% image for labeled split.'.format(
             int(self._label_ratio * 100))))
-        self._label_split_idx = self.label_split()
+        self._label_split_idx = np.array(self.label_split(), dtype=np.int64)
       elif self._split in ['val', 'test']:
         print('Use all image in labeled split, since we are in val/test')
         self._label_split_idx = np.arange(self._images.shape[0])
       else:
         raise ValueError('Unknown split {}'.format(self._split))
-      self._label_split_idx = np.array(self.label_split(), dtype=np.int64)
       self.save_label_split()
 
   def save_cache(self):
