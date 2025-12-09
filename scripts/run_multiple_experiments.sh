@@ -4,7 +4,7 @@ set -euo pipefail
 REPEATS=3
 START_SEED=2
 LOGDIR="./logs"
-OUTFILE="aggregated_results.txt"
+OUTFILE="aggregated_results_table7.txt"
 
 # -----------------------------------------------
 # Fill this array with experiments
@@ -15,7 +15,7 @@ COMMANDS=(
     # Table 1: Fully-supervised 10-way, 10-shot Omniglot alphabet recognition
     # Following sbatch script: nsuper=10 (alphabets), nsub=10 (chars/alphabet), nshot=1 (support), num-test=5 (query)
     # ============================================
-    "table1_alphabet_10way_10shot:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --nclasses-train 10 --nclasses-episode 10 --nclasses-eval 10 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --use-test --results ./results/table1/alphabet_10way_10shot"
+    # "table1_alphabet_10way_10shot:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --nclasses-train 10 --nclasses-episode 10 --nclasses-eval 10 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --use-test --results ./results/table1/alphabet_10way_10shot"
 
     # ============================================
     # Table 3: Alphabet and character recognition accuracy
@@ -24,16 +24,16 @@ COMMANDS=(
     # "table3_alphabet_alphabet:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --nclasses-train 10 --nclasses-eval 10 --nshot 10 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel-test 0 --results $PWD/results/table3/alphabet_alphabet_train_seed_{seed} && TRAIN_DIR=\$(ls -td $PWD/results/table3/alphabet_alphabet_train_seed_{seed}/*/ | head -1) && python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --nclasses-train 10 --nclasses-eval 10 --nshot 10 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --use-test --num-unlabel-test 0 --eval --pretrain \${TRAIN_DIR}modelbest.pt --results $PWD/results/table3/alphabet_alphabet_test_seed_{seed}"
 
     # Row 2: ALPHABET -> CHARS (20-way 1-shot) - Train on alphabets (10-way 10-shot), test on characters (20-way 1-shot)
-    "table3_alphabet_chars:::python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 10 --nclasses-episode 10 --nclasses-eval 10 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --results $PWD/results/table3/alphabet_chars_train_seed_{seed} && TRAIN_DIR=\$(ls -td $PWD/results/table3/alphabet_chars_train_seed_{seed}/*/ | head -1) && python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 20 --nclasses-episode 20 --nclasses-eval 20 --nshot 1 --num-test 5 --disable-distractor --use-test --num-unlabel-test 0 --eval --pretrain \${TRAIN_DIR}modelbest.pt --results $PWD/results/table3/alphabet_chars_test_seed_{seed}"
+    # "table3_alphabet_chars:::python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 10 --nclasses-episode 10 --nclasses-eval 10 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --results $PWD/results/table3/alphabet_chars_train_seed_{seed} && TRAIN_DIR=\$(ls -td $PWD/results/table3/alphabet_chars_train_seed_{seed}/*/ | head -1) && python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 20 --nclasses-episode 20 --nclasses-eval 20 --nshot 1 --num-test 5 --disable-distractor --use-test --num-unlabel-test 0 --eval --pretrain \${TRAIN_DIR}modelbest.pt --results $PWD/results/table3/alphabet_chars_test_seed_{seed}"
 
-    # Row 3: CHARS -> CHARS (20-way 1-shot) - Train and test on characters (no superclasses)
-    "table3_chars_chars_train:::python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 20 --nclasses-episode 20 --nclasses-eval 20 --nshot 1 --num-test 5 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --use-test --results ./results/table3/chars_chars_train"
+    # # Row 3: CHARS -> CHARS (20-way 1-shot) - Train and test on characters (no superclasses)
+    # "table3_chars_chars_train:::python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 --nclasses-train 20 --nclasses-episode 20 --nclasses-eval 20 --nshot 1 --num-test 5 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --use-test --results ./results/table3/chars_chars_train"
 
-    # ============================================
-    # Table 4: Generalization to held-out characters on 10-way, 5-shot alphabet recognition
-    # 10-way 5-shot = 10 alphabets, 5 characters per alphabet, 40% of characters for training, 60% held out
-    # ============================================
-    "table4:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --mode-ratio 0.4 --nclasses-train 5 --nclasses-episode 5 --nclasses-eval 5 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --results $PWD/results/table4/train_seed_{seed} && TRAIN_DIR=\$(ls -td $PWD/results/table4/train_seed_{seed}/*/ | head -1) && python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --mode-ratio 0.4 --nclasses-train 5 --nclasses-episode 5 --nclasses-eval 5 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --use-test --num-unlabel-test 0 --eval --pretrain \${TRAIN_DIR}modelbest.pt --results $PWD/results/table4/test_seed_{seed}"
+    # # ============================================
+    # # Table 4: Generalization to held-out characters on 10-way, 5-shot alphabet recognition
+    # # 10-way 5-shot = 10 alphabets, 5 characters per alphabet, 40% of characters for training, 60% held out
+    # # ============================================
+    # "table4:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --mode-ratio 0.4 --nclasses-train 5 --nclasses-episode 5 --nclasses-eval 5 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --results $PWD/results/table4/train_seed_{seed} && TRAIN_DIR=\$(ls -td $PWD/results/table4/train_seed_{seed}/*/ | head -1) && python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --mode-ratio 0.4 --nclasses-train 5 --nclasses-episode 5 --nclasses-eval 5 --nshot 1 --num-test 5 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --use-test --num-unlabel-test 0 --eval --pretrain \${TRAIN_DIR}modelbest.pt --results $PWD/results/table4/test_seed_{seed}"
 
     # ============================================
     # Table 7: Semi-supervised few-shot with 40% labeled + 5 unlabeled + 5 distractors
