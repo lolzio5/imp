@@ -63,8 +63,6 @@ Same as Table 1 - 47.57% vs 92.0%
 
 **Average: 56.11% ± 0.60%** vs. **Paper: 95.4% ± 0.2%**
 
-#### Row 2: Train on alphabets, test on characters
-
 ### Command I ran
 **Training:**
 ```bash
@@ -101,7 +99,6 @@ python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio
 
 ##### Command I ran
 
-#### Row 3: Train and test on characters
 ```bash
 python run_eval.py --dataset omniglot --model imp --mode-ratio 1.0 --label-ratio 1.0 \
   --nclasses-train 20 --nclasses-episode 20 --nclasses-eval 20 \
