@@ -1,0 +1,6 @@
+*.pyc
+__pychache__/
+omniglot/
+results/
+logs/
+imp/
