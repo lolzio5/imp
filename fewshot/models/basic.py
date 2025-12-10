@@ -105,8 +105,22 @@ class Protonet(nn.Module):
             y_unlabel = None
 
         if super_classes:
-            labels_train = torch.from_numpy(batch.y_train_str[:,1]).long().unsqueeze(0).to(DEVICE)
-            labels_test = torch.from_numpy(batch.y_test_str[:,1]).long().unsqueeze(0).to(DEVICE)
+            # Get the category labels (column 1 contains category/alphabet ID)
+            train_cats = batch.y_train_str[:,1]
+            test_cats = batch.y_test_str[:,1]
+            print(f"DEBUG: x_train shape: {batch.x_train.shape}")
+            print(f"DEBUG: x_test shape: {batch.x_test.shape}")
+            print(f"DEBUG: y_train_str shape: {batch.y_train_str.shape}")
+            print(f"DEBUG: y_test_str shape: {batch.y_test_str.shape}")
+            print(f"DEBUG: train_cats shape: {train_cats.shape}")
+            print(f"DEBUG: test_cats shape: {test_cats.shape}")
+            # Remap category IDs to be 0-indexed for the current episode
+            unique_cats = np.unique(np.concatenate([train_cats, test_cats]))
+            cat_to_idx = {cat: idx for idx, cat in enumerate(unique_cats)}
+            labels_train = torch.from_numpy(np.array([cat_to_idx[cat] for cat in train_cats])).long().unsqueeze(0).to(DEVICE)
+            labels_test = torch.from_numpy(np.array([cat_to_idx[cat] for cat in test_cats])).long().unsqueeze(0).to(DEVICE)
+            print(f"DEBUG: labels_train shape: {labels_train.shape}")
+            print(f"DEBUG: labels_test shape: {labels_test.shape}")
         else:
             labels_train = torch.from_numpy(batch.y_train.astype(np.int64)[:,:,1]).to(DEVICE)
             labels_test = torch.from_numpy(batch.y_test.astype(np.int64)[:,:,1]).to(DEVICE)

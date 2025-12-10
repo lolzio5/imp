@@ -157,7 +157,7 @@ class OmniglotDataset(RefinementMetaDataset):
     self._split_def = split_def
     self._split = split
     # whether modalities are merged (not used by default)
-    self._multimodal = False
+    self._multimodal = True
     self.name = 'omniglot'
     if args.disable_distractor:
       num_distractor = 0
