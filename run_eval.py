@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                                                unicode_literals)
+from __future__ import (absolute_import, division, print_function, unicode_literals)
 
 import datetime
 import json
@@ -23,9 +22,9 @@ from fewshot.configs.omniglot_config import *
 from fewshot.configs.tiered_imagenet_config import *
 from fewshot.data.data_factory import get_dataset
 from fewshot.data.episode import Episode
-from fewshot.data.mini_imagenet import MiniImageNetDataset
+# from fewshot.data.mini_imagenet import MiniImageNetDataset
 from fewshot.data.omniglot import OmniglotDataset
-from fewshot.data.tiered_imagenet import TieredImageNetDataset
+# from fewshot.data.tiered_imagenet import TieredImageNetDataset
 
 from fewshot.models.basic import Protonet
 
@@ -120,7 +119,7 @@ def evaluate(model, meta_dataset, num_episodes=500):
         batch = preprocess_batch(dataset)
  
         loss, output = model(batch, super_classes=args.super_classes)
-        all_acc.append(output['acc'])   # [B, N, K]
+        all_acc.append(output['acc'].detach().cpu().item())   # [B, N, K]
 
     return {'acc': np.mean(all_acc), 'acc_ci': np.std(all_acc) * 1.96 / np.sqrt(num_episodes), 'hit': 1}
 

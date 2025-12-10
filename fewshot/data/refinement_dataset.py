@@ -322,7 +322,10 @@ class RefinementMetaDataset(object):
         label_strs = self._label_str
 
       if ii < total_way:
-        train_img_ids.extend(_label_train_ids[:self._nshot])
+        actual_train_ids = _label_train_ids[:self._nshot]
+        actual_nshot = len(actual_train_ids)
+        train_img_ids.extend(actual_train_ids)
+        #train_img_ids.extend(_label_train_ids[:self._nshot])
 
         # Use the rest of the labeled image as queries, if num_test = -1.
         QUERY_SIZE_LARGE_ERR_MSG = (
@@ -334,8 +337,10 @@ class RefinementMetaDataset(object):
 
         test_img_ids.extend(_label_test_ids[:num_test])
 
-        train_labels.extend([class_idx] * self._nshot)
-        train_labels_str.extend([label_strs[cc]] * self._nshot)
+        # train_labels.extend([class_idx] * self._nshot)
+        # train_labels_str.extend([label_strs[cc]] * self._nshot)
+        train_labels.extend([class_idx] * actual_nshot)
+        train_labels_str.extend([label_strs[cc]] * actual_nshot)
         test_labels.extend([class_idx] * num_test)
         test_labels_str.extend([label_strs[cc]] * num_test)
         non_distractor.extend([class_idx] * self._num_unlabel)
@@ -370,8 +375,6 @@ class RefinementMetaDataset(object):
     test_ids_set = set(test_img_ids)
     for _id in train_unlabel_img_ids:
       assert _id not in test_ids_set
-
-
 
     return Episode(
         x_train=train_img,

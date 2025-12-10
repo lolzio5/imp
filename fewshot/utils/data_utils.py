@@ -6,6 +6,7 @@ import pdb
 import math
 
 def preprocess_batch(batch):
+
     if len(batch.x_train.shape) == 4:
         x_train = batch.x_train
         x_test = batch.x_test
@@ -29,6 +30,7 @@ def preprocess_batch(batch):
 
     x_train = np.rollaxis(x_train, 4, 2)
     x_test = np.rollaxis(x_test, 4, 2)
+
 
     return Episode(
                 x_train,
