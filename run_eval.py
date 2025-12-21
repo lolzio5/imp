@@ -14,8 +14,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
-
 from fewshot.configs import get_config
 # from fewshot.configs.mini_imagenet_config import *
 from fewshot.configs.omniglot_config import *

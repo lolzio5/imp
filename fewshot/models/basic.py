@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 import torchvision.models as models
-from torch.autograd import Variable
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.utils import *
@@ -32,15 +31,15 @@ class Protonet(nn.Module):
         ##For learning cluster radii
         log_sigma_u = torch.log(torch.FloatTensor([config.init_sigma_u]))
         if config.learn_sigma_u:
-            self.log_sigma_u = nn.Parameter(log_sigma_u, requires_grad=True)
+            self.log_sigma_u = nn.Parameter(log_sigma_u)
         else:
-            self.log_sigma_u = Variable(log_sigma_u, requires_grad=True).cuda()
+            self.log_sigma_u = log_sigma_u.requires_grad_(True).cuda()
 
         log_sigma_l = torch.log(torch.FloatTensor([config.init_sigma_l]))
         if config.learn_sigma_l:
-            self.log_sigma_l = nn.Parameter(log_sigma_l, requires_grad=True)
+            self.log_sigma_l = nn.Parameter(log_sigma_l)
         else:
-            self.log_sigma_l = Variable(log_sigma_l, requires_grad=True).cuda()
+            self.log_sigma_l = log_sigma_l.requires_grad_(True).cuda()
 
         x_dim = [config.num_channel]
         hid_dim = 64
@@ -88,23 +87,23 @@ class Protonet(nn.Module):
         return dist
 
     def _process_batch(self, batch, super_classes=False):
-        """Convert np arrays to variable"""
-        x_train = Variable(torch.from_numpy(batch.x_train).type(torch.FloatTensor), requires_grad=False).cuda()
-        x_test = Variable(torch.from_numpy(batch.x_test).type(torch.FloatTensor), requires_grad=False).cuda()
+        """Convert np arrays to tensors"""
+        x_train = torch.from_numpy(batch.x_train).float().cuda()
+        x_test  = torch.from_numpy(batch.x_test).float().cuda()
 
         if batch.x_unlabel is not None and batch.x_unlabel.size > 0:
-            x_unlabel = Variable(torch.from_numpy(batch.x_unlabel).type(torch.FloatTensor), requires_grad=False).cuda()
-            y_unlabel = Variable(torch.from_numpy(batch.y_unlabel.astype(np.int64)), requires_grad=False).cuda()
+            x_unlabel = torch.from_numpy(batch.x_unlabel).float().cuda()
+            y_unlabel = torch.from_numpy(batch.y_unlabel.astype(np.int64)).cuda()
         else:
             x_unlabel = None
             y_unlabel = None
 
         if super_classes:
-            labels_train = Variable(torch.from_numpy(batch.y_train_str[:,1]).type(torch.LongTensor), requires_grad=False).unsqueeze(0).cuda()
-            labels_test = Variable(torch.from_numpy(batch.y_test_str[:,1]).type(torch.LongTensor), requires_grad=False).unsqueeze(0).cuda()
+            labels_train = (torch.from_numpy(batch.y_train_str[:, 1]).long().unsqueeze(0).cuda())
+            labels_test = (torch.from_numpy(batch.y_test_str[:, 1]).long().unsqueeze(0).cuda())
         else:
-            labels_train = Variable(torch.from_numpy(batch.y_train.astype(np.int64)[:,:,1]),requires_grad=False).cuda()
-            labels_test = Variable(torch.from_numpy(batch.y_test.astype(np.int64)[:,:,1]),requires_grad=False).cuda()
+            labels_train = (torch.from_numpy(batch.y_train.astype(np.int64)[:, :, 1]).cuda())
+            labels_test = (torch.from_numpy(batch.y_test.astype(np.int64)[:, :, 1]).cuda())
 
         return Episode(x_train,
                                      labels_train,

@@ -1,11 +1,8 @@
 import numpy as np
-
-import torch
+import torch,os
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.autograd import Variable
-import pdb
 
 def one_hot(indices, depth, dim=-1, cumulative=True):
     """One-hot encoding along dim"""
@@ -21,10 +18,10 @@ def one_hot(indices, depth, dim=-1, cumulative=True):
     indices = torch.unsqueeze(indices, dim)
     out = out.scatter_(dim, indices.data.type(torch.LongTensor), 1.0)
 
-    return Variable(out)
+    return out
 
 def update_params(loss, params_dict, step_size=0.1):
-    params= [v for k,v in list(params_dict.items())]
+    params= [v for k,v in params_dict.items()]
     updated_params = params_dict.copy()
     grads = torch.autograd.grad(loss, params,
         create_graph=False, allow_unused=True)
@@ -73,7 +70,7 @@ def reverse_map(y_raw, class_id):
     return out
 
 def ones_like(variable, requires_grad=False):
-    return Variable(torch.ones_like(variable), requires_grad=requires_grad)
+    return torch.ones_like(variable).requires_grad(requires_grad)
 
 def compute_distances(protos, example):
   dist = torch.sum((example - protos)**2, dim=2)
@@ -151,12 +148,16 @@ def assign_cluster_radii_limited(cluster_centers, data, radii, target_labels):
     """
     logits = compute_logits_radii(cluster_centers, data, radii) # [B, N, K]
     class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size()).cuda()
-    class_logits[target_labels] = logits.data[target_labels]
+    # print("target_labels size", target_labels.size())
+    # print("class_logits",class_logits[0,:].size())
+    # print("logit.data",logits.data.size())
+    class_logits[0,target_labels] = logits.data[0,target_labels]
+
     logits_shape = logits.size()
     bsize = logits_shape[0]
     ndata = logits_shape[1]
     ncluster = logits_shape[2]
-    prob = F.softmax(Variable(class_logits), dim=-1)
+    prob = F.softmax(class_logits, dim=-1)
     return prob
 
 def assign_cluster_radii_diag(cluster_centers, data, radii):
