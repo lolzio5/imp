@@ -17,8 +17,8 @@ class IMPModel(Protonet):
         nClusters += 1
         bsize = protos.size()[0]
         dimension = protos.size()[2]
-        zero_count = Variable(torch.zeros(bsize, 1)).cuda()
-        d_radii = Variable(torch.ones(bsize, 1), requires_grad=False).cuda()
+        zero_count = torch.zeros(bsize, 1).cuda()
+        d_radii = torch.ones(bsize, 1).cuda()
 
         if cluster_type == 'labeled':
             d_radii = d_radii * torch.exp(self.log_sigma_l)
@@ -75,25 +75,13 @@ class IMPModel(Protonet):
         weights = torch.zeros_like(logits.data)
         # ...then include the closest prototype in each class and unlabeled)
         unique_labels = np.unique(labels.cpu().numpy())
-        print("unique_labels ", unique_labels.size,"\n", unique_labels)
-        print("support labels ", labels.size())
         for l in unique_labels:
-            print("now labels", l)
             class_mask = labels == l
-            print("class mask size ", class_mask.size())
-            print("labels size", labels.size())
-            # print(class_mask)
-            # os.system("pause")
             class_logits = torch.ones_like(logits.data) * float('-Inf')
-            print("logit data size", logits.data.size())
-            print("class logits", class_logits[class_mask.repeat(logits.size(0), 1)].size())
-            print("logits fixed", logits[:,class_mask].data.size())
             class_logits[class_mask.repeat(logits.size(0), 1)] = logits[:,class_mask].data.view(-1)
             _, best_in_class = torch.max(class_logits, dim=1)
-            print("class logits after", class_logits.size())
             weights[range(0, targets.size(0)), best_in_class] = 1.
-            # os.system("pause")
-        loss = weighted_loss(logits, Variable(best_targets), Variable(weights))
+        loss = weighted_loss(logits, best_targets, weights)
         return loss.mean()
 
     def forward(self, sample, super_classes=False):
@@ -112,7 +100,7 @@ class IMPModel(Protonet):
 
         #make initial radii for labeled clusters
         bsize = h_train.size()[0]
-        radii = Variable(torch.ones(bsize, nClusters)).cuda() * torch.exp(self.log_sigma_l)
+        radii = torch.ones(bsize, nClusters).cuda() * torch.exp(self.log_sigma_l)
 
         support_labels = torch.arange(0, nClusters).cuda().long()
 
@@ -129,20 +117,14 @@ class IMPModel(Protonet):
             for i, ex in enumerate(h_train[0]):
                 idxs = torch.nonzero(batch.y_train.data[0, i] == support_labels)[0]
                 distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
-                
-                print("batch y_train size: ",batch.y_train.size())
-                print("batch y_train size: ",batch.y_train[0, i].data.size())
                 labeled_flag = torch.LongTensor([batch.y_train[0, i].data.tolist()]).cuda()
-                print("support labels: ", labeled_flag)
                 if (torch.min(distances) > lamda):
                     nClusters, tensor_proto, radii  = self._add_cluster(nClusters, tensor_proto, radii, cluster_type='labeled', ex=ex.data)
                     support_labels = torch.cat([support_labels, labeled_flag], dim=0)
-                print("support_labels size: ",support_labels.size())
-                print("support labels: ", support_labels)
             #perform partial reassignment based on newly created labeled clusters
             if nClusters > nInitialClusters:
                 support_targets = batch.y_train.data[0, :, None] == support_labels
-                prob_train = assign_cluster_radii_limited(Variable(tensor_proto), h_train, radii, support_targets)
+                prob_train = assign_cluster_radii_limited(tensor_proto, h_train, radii, support_targets)
 
             nTrainClusters = nClusters
 
@@ -151,63 +133,32 @@ class IMPModel(Protonet):
                 h_unlabel = self._run_forward(batch.x_unlabel)
                 h_all = torch.cat([h_train, h_unlabel], dim=1)
                 unlabeled_flag = torch.LongTensor([-1]).cuda()
-                print("unlabels h size: ",h_unlabel.size())
-                print("umlabel lamda: ", lamda)
 
-                # os.system("pause")
                 for i, ex in enumerate(h_unlabel[0]):
                     distances = self._compute_distances(tensor_proto, ex.data)
                     if torch.min(distances) > lamda:
-                        print(i,"create support_labels size ", support_labels.size())
                         nClusters, tensor_proto, radii = self._add_cluster(nClusters, tensor_proto, radii, cluster_type='unlabeled', ex=ex.data)
                         support_labels = torch.cat([support_labels, unlabeled_flag], dim=0)
-                print("final size", support_labels.size())
-                # add new, unlabeled clusters to the total probability
-                if nClusters > nTrainClusters:
-                    print("train cluster",nTrainClusters)
-                    print("ncluster", nClusters)
-                    print("prob_train size", prob_train.size())
-                    unlabeled_clusters = torch.zeros(prob_train.size(0), prob_train.size(1), nClusters - nTrainClusters)
-                    print("unlabel", unlabeled_clusters.size())
-                    prob_train = torch.cat([prob_train, Variable(unlabeled_clusters).cuda()], dim=2)
-                    print("prob_train size", prob_train.size())
 
-                prob_unlabel = assign_cluster_radii(Variable(tensor_proto).cuda(), h_unlabel, radii)
-                prob_unlabel_nograd = Variable(prob_unlabel.data, requires_grad=False).cuda()
-                print("prob_unlabel size", prob_unlabel.size())
-                print("prob_unlabel_nograd size", prob_unlabel_nograd.size())
-                prob_all = torch.cat([Variable(prob_train.data, requires_grad=False), prob_unlabel_nograd], dim=1)
-                print("prob_all size", prob_all.size())
-                print("h_all size", h_all.size())
+                if nClusters > nTrainClusters:
+                    unlabeled_clusters = torch.zeros(prob_train.size(0), prob_train.size(1), nClusters - nTrainClusters)
+                    prob_train = torch.cat([prob_train, unlabeled_clusters.cuda()], dim=2)
+
+                prob_unlabel = assign_cluster_radii(tensor_proto.cuda(), h_unlabel, radii)
+                prob_unlabel_nograd = prob_unlabel.detach().cuda()
+                prob_all = torch.cat([prob_train.detach(), prob_unlabel_nograd], dim=1)
                 protos = self._compute_protos(h_all, prob_all)
-                print("Before del support_labels size ", support_labels.size())
-                # os.system("pause")
                 protos, radii, support_labels = self.delete_empty_clusters(protos, prob_all, radii, support_labels)
             else:
-                protos = Variable(tensor_proto).cuda()
-                protos = self._compute_protos(h_train, Variable(prob_train.data, requires_grad=False).cuda())
-                print("Before del support_labels size ", support_labels.size())
-                # os.system("pause")
+                protos = tensor_proto.cuda()
+                protos = self._compute_protos(h_train, prob_train.detach().cuda())
                 protos, radii, support_labels = self.delete_empty_clusters(protos, prob_train, radii, support_labels)
-            print("support_labels size ", support_labels.size())
 
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
-        print(logits.size())
-        # convert class targets into indicators for supports in each class
         labels = batch.y_test.data
         labels[labels >= nInitialClusters] = -1
-        print("labels", labels.size())
         support_targets = labels[0, :, None] == support_labels
-        print("support labels size ", support_labels.size())
-        print("support targets size", support_targets.size())
-        # print("labels ", labels[0, :, None] )
-        # os.system("pause")
         loss = self.loss(logits, support_targets, support_labels)
-        print("loss size", loss.size())
-        print("loss.data", loss.data)
-        print("loss", loss)
-        print("logits data 0", logits.data[0])
-        # map support predictions back into classes to check accuracy
         _, support_preds = torch.max(logits.data, dim=1)
         y_pred = support_labels[support_preds]
 
@@ -232,7 +183,7 @@ class IMPModel(Protonet):
             h_all = h_unlabel
             protos = h_unlabel[0][0].unsqueeze(0).unsqueeze(0)
 
-            radii = Variable(torch.ones(1, 1)).cuda() * torch.exp(self.log_sigma_l)
+            radii = torch.ones(1, 1).cuda() * torch.exp(self.log_sigma_l)
             nClusters = 1
             protos_clusters = []
 
@@ -243,9 +194,9 @@ class IMPModel(Protonet):
                     if (torch.min(distances) > unlabel_lambda):
                         nClusters, tensor_proto, radii = self._add_cluster(nClusters, tensor_proto, radii, 'labeled', ex.data)
 
-                prob_unlabel = assign_cluster_radii(Variable(tensor_proto).cuda(), h_unlabel, radii)
+                prob_unlabel = assign_cluster_radii(tensor_proto.cuda(), h_unlabel, radii)
 
-                prob_unlabel_nograd = Variable(prob_unlabel.data, requires_grad=False).cuda()
+                prob_unlabel_nograd = prob_unlabel.detach().cuda()
                 prob_all = prob_unlabel_nograd
                 protos = self._compute_protos(h_all, prob_all)
 
