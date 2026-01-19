@@ -2,216 +2,160 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
-import torchvision.models as models
+import numpy as np
 
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.utils import *
-
-import torch.nn.init as nninit
 from fewshot.data.episode import Episode
-import pdb
-import subprocess
+
 
 class Flatten(nn.Module):
-    def __init__(self):
-        super(Flatten, self).__init__()
-
     def forward(self, x):
         return x.view(x.size(0), -1)
+
 
 @RegisterModel("protonet")
 class Protonet(nn.Module):
 
     def __init__(self, config, dataset):
-        super(Protonet, self).__init__()
+        super().__init__()
 
         self.config = config
         self.dataset = dataset
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        ##For learning cluster radii
-        log_sigma_u = torch.log(torch.FloatTensor([config.init_sigma_u]))
-        if config.learn_sigma_u:
-            self.log_sigma_u = nn.Parameter(log_sigma_u)
-        else:
-            self.log_sigma_u = log_sigma_u.requires_grad_(True).cuda()
+        # ─────────────────────────────────────────────
+        # Learned cluster variances (log-space)
+        # ─────────────────────────────────────────────
+        self.log_sigma_l = nn.Parameter(
+            torch.log(torch.tensor([config.init_sigma_l], dtype=torch.float32)),
+            requires_grad=config.learn_sigma_l
+        )
 
-        log_sigma_l = torch.log(torch.FloatTensor([config.init_sigma_l]))
-        if config.learn_sigma_l:
-            self.log_sigma_l = nn.Parameter(log_sigma_l)
-        else:
-            self.log_sigma_l = log_sigma_l.requires_grad_(True).cuda()
+        self.log_sigma_u = nn.Parameter(
+            torch.log(torch.tensor([config.init_sigma_u], dtype=torch.float32)),
+            requires_grad=config.learn_sigma_u
+        )
 
-        x_dim = [config.num_channel]
-        hid_dim = 64
-        z_dim = 64
-        use_sigma = True
-
-        def conv_block(in_channels, out_channels):
+        # ─────────────────────────────────────────────
+        # Encoder (Conv-4 backbone)
+        # ─────────────────────────────────────────────
+        def conv_block(in_ch, out_ch):
             return nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 3, padding=1),
-                nn.BatchNorm2d(out_channels),
-                nn.ReLU(),
-                nn.MaxPool2d(2)
-            )
-        def final_conv_block(in_channels, out_channels):
-            return nn.Sequential(
-                nn.Conv2d(in_channels, out_channels+1, 3, padding=1),
-                nn.BatchNorm2d(out_channels+1),
+                nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
                 nn.MaxPool2d(2)
             )
 
         self.encoder = nn.Sequential(
-                    conv_block(x_dim[0], hid_dim),
-                    conv_block(hid_dim, hid_dim),
-                    conv_block(hid_dim, hid_dim),
-                    conv_block(hid_dim, z_dim),
-                    Flatten()
-            )
+            conv_block(config.num_channel, 64),
+            conv_block(64, 64),
+            conv_block(64, 64),
+            conv_block(64, 64),
+            Flatten()
+        )
 
-        self.init_weights()
+        self._init_weights()
+        self.to(self.device)
 
-    def init_weights(self):
-        def conv_init(m):
-            classname = m.__class__.__name__
-            if classname.find('Conv') != -1:
-                init.xavier_uniform(m.weight, gain=np.sqrt(2))
-                init.constant(m.bias, 0)
-            elif classname.find('BatchNorm') != -1:
-                init.constant(m.weight, 1)
-                init.constant(m.bias, 0)
+    # ─────────────────────────────────────────────
+    # Initialization
+    # ─────────────────────────────────────────────
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.ones_(m.weight)
+                init.zeros_(m.bias)
 
-        self.encoder = self.encoder.apply(conv_init)
-
+    # ─────────────────────────────────────────────
+    # Distance computation
+    # ─────────────────────────────────────────────
     def _compute_distances(self, protos, example):
-        dist = torch.sum((example - protos)**2, dim=2)
-        return dist
+        """
+        protos: [B, C, D]
+        example: [D] or [B, D]
+        """
+        return ((example.unsqueeze(1) - protos) ** 2).sum(dim=2)
 
+    # ─────────────────────────────────────────────
+    # Encoder forward
+    # ─────────────────────────────────────────────
+    def _run_forward(self, x):
+        """
+        x: [B, N, C, H, W]
+        returns: [B, N, D]
+        """
+        B, N = x.shape[:2]
+        x = x.view(B * N, *x.shape[2:])
+        h = self.encoder(x)
+        return h.view(B, N, -1)
+
+    # ─────────────────────────────────────────────
+    # Prototype computation (soft assignments)
+    # ─────────────────────────────────────────────
+    def _compute_protos(self, h, probs):
+        """
+        h:     [B, N, D]
+        probs: [B, N, C]
+        """
+        probs = probs.unsqueeze(-1)              # [B, N, C, 1]
+        h = h.unsqueeze(2)                       # [B, N, 1, D]
+
+        weighted_sum = (h * probs).sum(dim=1)    # [B, C, D]
+        counts = probs.sum(dim=1)                # [B, C, 1]
+
+        # numerical safety
+        counts = counts.clamp_min(1e-8)
+        return weighted_sum / counts
+
+    # ─────────────────────────────────────────────
+    # Episodic batch processing
+    # ─────────────────────────────────────────────
     def _process_batch(self, batch, super_classes=False):
-        """Convert np arrays to tensors"""
-        x_train = torch.from_numpy(batch.x_train).float().cuda()
-        x_test  = torch.from_numpy(batch.x_test).float().cuda()
+
+        def to_tensor(x):
+            return torch.from_numpy(x).float().to(self.device)
+
+        x_train = to_tensor(batch.x_train)
+        x_test = to_tensor(batch.x_test)
 
         if batch.x_unlabel is not None and batch.x_unlabel.size > 0:
-            x_unlabel = torch.from_numpy(batch.x_unlabel).float().cuda()
-            y_unlabel = torch.from_numpy(batch.y_unlabel.astype(np.int64)).cuda()
+            x_unlabel = to_tensor(batch.x_unlabel)
+            y_unlabel = torch.from_numpy(batch.y_unlabel).long().to(self.device)
         else:
-            x_unlabel = None
-            y_unlabel = None
+            x_unlabel, y_unlabel = None, None
 
         if super_classes:
-            labels_train = (torch.from_numpy(batch.y_train_str[:, 1]).long().unsqueeze(0).cuda())
-            labels_test = (torch.from_numpy(batch.y_test_str[:, 1]).long().unsqueeze(0).cuda())
+            y_train = torch.from_numpy(batch.y_train_str[:, 1]).long().unsqueeze(0)
+            y_test = torch.from_numpy(batch.y_test_str[:, 1]).long().unsqueeze(0)
         else:
-            labels_train = (torch.from_numpy(batch.y_train.astype(np.int64)[:, :, 1]).cuda())
-            labels_test = (torch.from_numpy(batch.y_test.astype(np.int64)[:, :, 1]).cuda())
+            y_train = torch.from_numpy(batch.y_train[:, :, 1]).long()
+            y_test = torch.from_numpy(batch.y_test[:, :, 1]).long()
 
-        return Episode(x_train,
-                                     labels_train,
-                                     np.expand_dims(batch.train_indices,0),
-                                     x_test,
-                                     labels_test,
-                                     np.expand_dims(batch.test_indices,0),
-                                     x_unlabel=x_unlabel,
-                                     y_unlabel=y_unlabel,
-                                     unlabel_indices=np.expand_dims(batch.unlabel_indices,0),
-                                     y_train_str=batch.y_train_str,
-                                     y_test_str=batch.y_test_str)
+        y_train = y_train.to(self.device)
+        y_test = y_test.to(self.device)
 
+        return Episode(
+            x_train=x_train,
+            y_train=y_train,
+            train_indices=np.expand_dims(batch.train_indices, 0),
+            x_test=x_test,
+            y_test=y_test,
+            test_indices=np.expand_dims(batch.test_indices, 0),
+            x_unlabel=x_unlabel,
+            y_unlabel=y_unlabel,
+            unlabel_indices=np.expand_dims(batch.unlabel_indices, 0),
+            y_train_str=batch.y_train_str,
+            y_test_str=batch.y_test_str
+        )
 
-    def _noisify_labels(self, y_train, num_noisy=1):
-        if num_noisy > 0:
-            num_classes = len(np.unique(y_train))
-            shot = int(y_train.shape[1]/num_classes)
-            selected_idxs = y_train[:,::int(shot/num_noisy)]
-            y_train[:,::int(shot/num_noisy)] = np.random.randint(0, num_classes, len(selected_idxs[0]))
-        return y_train
-
-
-    def _run_forward(self, cnn_input):
-        n_class = cnn_input.size(1)
-        n_support = cnn_input.size(0)
-        encoded = self.encoder.forward(cnn_input.view(n_class * n_support, *cnn_input.size()[2:]))
-        return encoded.unsqueeze(0)
-
-    def _compute_protos(self, h, probs):
-        """Compute the prototypes
-        Args:
-            h: [B, N, D] encoded inputs
-            probs: [B, N, nClusters] soft assignment
-        Returns:
-            cluster protos: [B, nClusters, D]
-        """
-
-        h = torch.unsqueeze(h, 2)       # [B, N, 1, D]
-        probs = torch.unsqueeze(probs, 3)       # [B, N, nClusters, 1]
-        prob_sum = torch.sum(probs, 1)  # [B, nClusters, 1]
-        zero_indices = (prob_sum.view(-1) == 0).nonzero()
-        if torch.numel(zero_indices) != 0:
-            values = torch.masked_select(torch.ones_like(prob_sum), torch.eq(prob_sum, 0.0))
-            prob_sum = prob_sum.put_(zero_indices, values)
-        protos = h*probs    # [B, N, nClusters, D]
-        protos = torch.sum(protos, 1)/prob_sum
-        return protos
-
-    def _get_count(self, probs, soft=True):
-        """
-        Args:
-            probs: [B, N, nClusters] soft assignments
-        Returns:
-            counts: [B, nClusters] number of elements in each cluster
-        """
-        if not soft:
-            _, max_indices = torch.max(probs, 2)    # [B, N]
-            nClusters = probs.size()[2]
-            max_indices = one_hot(max_indices, nClusters)
-            counts = torch.sum(max_indices, 1).cuda()
-        else:
-            counts = torch.sum(probs, 1)
-        return counts
-
-    def _embedding_variance(self, x):
-        """Compute variance in embedding space
-        Args:
-            x: examples from one class
-        Returns:
-            in-class variance
-        """
-        h = self._run_forward(x)   # [B, N, D]
-        D = h.size()[2]
-        h = h.view(-1, D)   # [BxN, D]
-        variance = torch.var(h, 0)
-        return torch.sum(variance)
-
-    def _within_class_variance(self, x_list):
-        protos = []
-        for x in x_list:
-            h = self._run_forward(x)
-            D = h.size()[2]
-            h = h.view(-1, D)   # [BxN, D]
-            proto = torch.mean(h, 0)
-            protos.append(proto)
-        protos = torch.cat(protos, 0)
-        variance = torch.var(protos, 0)
-        return torch.sum(variance)
-
-    def _within_class_distance(self, x_list):
-        protos = []
-        for x in x_list:
-            h = self._run_forward(x)
-            D = h.size()[2]
-            h = h.view(-1, D)   # [BxN, D]
-            proto = torch.mean(h, 0, keepdim=True)
-            protos.append(proto)
-        protos = torch.cat(protos, 0).data.cpu().numpy()   # [C, D]
-        num_classes = protos.shape[0]
-        distances = []
-        for i in range(num_classes):
-            for j in range(num_classes):
-                if i > j:
-                    dist = np.sum((protos[i, :] - protos[j, :])**2)
-                    distances.append(dist)
-        return np.mean(distances)
-
-
+    # ─────────────────────────────────────────────
+    # Abstract forward
+    # ─────────────────────────────────────────────
     def forward(self, sample):
-        raise NotImplementedError
+        raise NotImplementedError("Use a subclass (e.g. IMPModel)")

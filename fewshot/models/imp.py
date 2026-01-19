@@ -1,171 +1,262 @@
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
+from typing import Optional, Tuple, Dict, Any
 from fewshot.models.model_factory import RegisterModel
 from fewshot.models.basic import Protonet
 from fewshot.models.utils import *
 from fewshot.models.weighted_ce_loss import weighted_loss
-import pdb
+
 
 @RegisterModel("imp")
 class IMPModel(Protonet):
-
-    def _add_cluster(self, nClusters, protos, radii, cluster_type='unlabeled', ex=None):
+    def _add_cluster(
+        self,
+        nClusters: int,
+        protos: torch.Tensor,
+        radii: torch.Tensor,
+        cluster_type: str = 'unlabeled',
+        ex: Optional[torch.Tensor] = None
+    ) -> Tuple[int, torch.Tensor, torch.Tensor]:
+        """Add a new cluster to the prototype set."""
         nClusters += 1
         bsize = protos.size(0)
-        d_radii = torch.ones(bsize, 1, device=protos.device)
-
+        
+        d_radii = torch.ones(bsize, 1, device=protos.device, dtype=protos.dtype)
+        
         if cluster_type == 'labeled':
             d_radii = d_radii * torch.exp(self.log_sigma_l)
         else:
             d_radii = d_radii * torch.exp(self.log_sigma_u)
-
+        
         if ex is None:
             new_proto = self.base_distribution.data.to(protos.device)
         else:
-            new_proto = ex.unsqueeze(0).unsqueeze(0).to(protos.device)
-
+            new_proto = ex.unsqueeze(0).unsqueeze(0)
+        
         protos = torch.cat([protos, new_proto], dim=1)
         radii = torch.cat([radii, d_radii], dim=1)
+        
         return nClusters, protos, radii
 
-    def estimate_lambda(self, tensor_proto, semi_supervised):
+    def estimate_lambda(
+        self,
+        tensor_proto: torch.Tensor,
+        semi_supervised: bool
+    ) -> torch.Tensor:
+        """Estimate lambda parameter by mean of shared sigmas - fully in torch."""
         rho = tensor_proto[0].var(dim=0).mean()
-
+        
         if semi_supervised:
-            sigma = (torch.exp(self.log_sigma_l).item() + torch.exp(self.log_sigma_u).item()) / 2.
+            sigma = (torch.exp(self.log_sigma_l) + torch.exp(self.log_sigma_u)) / 2.0
         else:
-            sigma = torch.exp(self.log_sigma_l).item()
-
-        lamda = -2 * sigma * np.log(self.config.ALPHA) + self.config.dim * sigma * np.log(1 + rho.item() / sigma)
+            sigma = torch.exp(self.log_sigma_l)
+        
+        lamda = -2 * sigma * torch.log(torch.tensor(self.config.ALPHA, device=sigma.device)) + \
+                self.config.dim * sigma * torch.log(1 + rho / sigma)
+        
         return lamda
-
-    def delete_empty_clusters(self, tensor_proto, prob, radii, targets, eps=1e-3):
-        column_sums = prob[0].sum(dim=0)
+    
+    def delete_empty_clusters(
+        self,
+        tensor_proto: torch.Tensor,
+        prob: torch.Tensor,
+        radii: torch.Tensor,
+        targets: torch.Tensor,
+        eps: float = 1e-3
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Remove clusters with negligible probability mass."""
+        column_sums = torch.sum(prob[0], dim=0)
         good_protos = column_sums > eps
-        idxs = torch.nonzero(good_protos).squeeze()
+        idxs = torch.nonzero(good_protos, as_tuple=False).squeeze()
+        
+        if idxs.dim() == 0:
+            idxs = idxs.unsqueeze(0)
+        
         return tensor_proto[:, idxs, :], radii[:, idxs], targets[idxs]
-
-    def loss(self, logits, targets, labels):
+    
+    def loss(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        labels: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Loss function to "or" across the prototypes in the class.
+        
+        Takes the loss for the closest prototype in the class and all negatives.
+        
+        Args:
+            logits: [B, N, nClusters] of nll probs for each cluster
+            targets: [B, N] of target clusters
+            labels: cluster labels
+            
+        Returns:
+            Weighted cross entropy loss
+        """
         targets = targets.to(logits.device)
-        target_logits = torch.full_like(logits, float('-Inf'))
+        
+        target_logits = torch.full_like(logits, float('-inf'))
         target_logits[targets] = logits[targets]
         _, best_targets = torch.max(target_logits, dim=1)
-
+        
         weights = torch.zeros_like(logits)
+        
         unique_labels = torch.unique(labels)
+        
         for l in unique_labels:
             class_mask = labels == l
-            class_logits = torch.full_like(logits, float('-Inf'))
-            class_logits[:, class_mask] = logits[:, class_mask]
+            class_logits = torch.full_like(logits, float('-inf'))
+            class_logits[class_mask.repeat(logits.size(0), 1)] = logits[:, class_mask].reshape(-1)
             _, best_in_class = torch.max(class_logits, dim=1)
-            weights[torch.arange(logits.size(0)), best_in_class] = 1.
+            weights[torch.arange(targets.size(0), device=weights.device), best_in_class] = 1.0
+        
+        loss = weighted_loss(logits, best_targets, weights)
+        return loss.mean()
 
-        return weighted_loss(logits, best_targets, weights).mean()
-
-    def forward(self, sample, super_classes=False):
+    def forward(
+        self,
+        sample: Any,
+        super_classes: bool = False
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Forward pass with clustering."""
         batch = self._process_batch(sample, super_classes=super_classes)
-        nClusters = len(torch.unique(batch.y_train))
+        
+        unique_train_labels = torch.unique(batch.y_train)
+        nClusters = unique_train_labels.numel()
         nInitialClusters = nClusters
-
+        
         h_train = self._run_forward(batch.x_train)
         h_test = self._run_forward(batch.x_test)
-
+        
         prob_train = one_hot(batch.y_train, nClusters).to(h_train.device)
-
+        
         bsize = h_train.size(0)
         radii = torch.ones(bsize, nClusters, device=h_train.device) * torch.exp(self.log_sigma_l)
-        support_labels = torch.arange(0, nClusters, device=h_train.device).long()
-
+        
+        support_labels = torch.arange(0, nClusters, device=h_train.device, dtype=torch.long)
+        
         protos = self._compute_protos(h_train, prob_train)
-        lamda = self.estimate_lambda(protos.data, batch.x_unlabel is not None)
-
-        for _ in range(self.config.num_cluster_steps):
-            tensor_proto = protos.data
-
-            # Labeled examples
+        
+        lamda = self.estimate_lambda(protos, batch.x_unlabel is not None)
+        
+        for ii in range(self.config.num_cluster_steps):
+            tensor_proto = protos
+            
             for i, ex in enumerate(h_train[0]):
-                idxs = torch.nonzero(batch.y_train[0, i] == support_labels)[0]
-                distances = self._compute_distances(tensor_proto[:, idxs, :], ex.data)
+                idxs = torch.nonzero(batch.y_train[0, i] == support_labels, as_tuple=False)[0]
+            
+                distances = self._compute_distances(tensor_proto[:, idxs, :], ex)
+                
+                labeled_flag = batch.y_train[0, i].unsqueeze(0)
+                
                 if torch.min(distances) > lamda:
                     nClusters, tensor_proto, radii = self._add_cluster(
-                        nClusters, tensor_proto, radii, cluster_type='labeled', ex=ex.data
+                        nClusters, tensor_proto, radii, 
+                        cluster_type='labeled', ex=ex
                     )
-                    labeled_flag = batch.y_train[0, i].unsqueeze(0)
                     support_labels = torch.cat([support_labels, labeled_flag], dim=0)
-
+            
             if nClusters > nInitialClusters:
                 support_targets = batch.y_train[0, :, None] == support_labels
-                prob_train = assign_cluster_radii_limited(tensor_proto, h_train, radii, support_targets)
-
+                prob_train = assign_cluster_radii_limited(
+                    tensor_proto, h_train, radii, support_targets
+                )
+            
             nTrainClusters = nClusters
-
-            # Unlabeled examples
+            
             if batch.x_unlabel is not None:
                 h_unlabel = self._run_forward(batch.x_unlabel)
                 h_all = torch.cat([h_train, h_unlabel], dim=1)
-                unlabeled_flag = torch.tensor([-1], device=h_train.device)
-
+                unlabeled_flag = torch.tensor([-1], device=h_train.device, dtype=torch.long)
+                
                 for i, ex in enumerate(h_unlabel[0]):
-                    distances = self._compute_distances(tensor_proto, ex.data)
+                    distances = self._compute_distances(tensor_proto, ex)
                     if torch.min(distances) > lamda:
                         nClusters, tensor_proto, radii = self._add_cluster(
-                            nClusters, tensor_proto, radii, cluster_type='unlabeled', ex=ex.data
+                            nClusters, tensor_proto, radii, 
+                            cluster_type='unlabeled', ex=ex
                         )
                         support_labels = torch.cat([support_labels, unlabeled_flag], dim=0)
-
+                
                 if nClusters > nTrainClusters:
-                    unlabeled_clusters = torch.zeros(prob_train.size(0), prob_train.size(1), nClusters - nTrainClusters, device=h_train.device)
+                    unlabeled_clusters = torch.zeros(
+                        prob_train.size(0), prob_train.size(1), 
+                        nClusters - nTrainClusters,
+                        device=prob_train.device,
+                        dtype=prob_train.dtype
+                    )
                     prob_train = torch.cat([prob_train, unlabeled_clusters], dim=2)
-
+                
                 prob_unlabel = assign_cluster_radii(tensor_proto, h_unlabel, radii)
                 prob_unlabel_nograd = prob_unlabel.detach()
+                
                 prob_all = torch.cat([prob_train.detach(), prob_unlabel_nograd], dim=1)
-
                 protos = self._compute_protos(h_all, prob_all)
-                protos, radii, support_labels = self.delete_empty_clusters(protos, prob_all, radii, support_labels)
+                
+                protos, radii, support_labels = self.delete_empty_clusters(
+                    protos, prob_all, radii, support_labels
+                )
             else:
-                protos = tensor_proto
                 protos = self._compute_protos(h_train, prob_train.detach())
-                protos, radii, support_labels = self.delete_empty_clusters(protos, prob_train, radii, support_labels)
-
+                
+                protos, radii, support_labels = self.delete_empty_clusters(
+                    protos, prob_train, radii, support_labels
+                )
+        
         logits = compute_logits_radii(protos, h_test, radii).squeeze()
-        labels = batch.y_test
+        
+        labels = batch.y_test.clone()
         labels[labels >= nInitialClusters] = -1
+        
         support_targets = labels[0, :, None] == support_labels
+        
         loss = self.loss(logits, support_targets, support_labels)
-
+        
         _, support_preds = torch.max(logits, dim=1)
         y_pred = support_labels[support_preds]
+        
         acc_val = torch.eq(y_pred, labels[0]).float().mean()
+        
+        return loss, {
+            'loss': loss,
+            'acc': acc_val,
+            'logits': logits[0]
+        }
 
-        return loss, {'loss': loss.item(), 'acc': acc_val, 'logits': logits[0].detach()}
-
-    def forward_unsupervised(self, sample, super_classes, unlabel_lambda=20., num_cluster_steps=5):
+    def forward_unsupervised(
+        self,
+        sample: Any,
+        super_classes: bool,
+        unlabel_lambda: float = 20.0,
+        num_cluster_steps: int = 5
+    ) -> Dict[str, torch.Tensor]:
+        """Forward pass for unsupervised clustering."""
         batch = self._process_batch(sample, super_classes=super_classes)
-        h_test = self._run_forward(batch.x_test)
-
+        xq = batch.x_test
+        h_test = self._run_forward(xq)
+        
         if batch.x_unlabel is not None:
             h_unlabel = self._run_forward(batch.x_unlabel)
             h_all = h_unlabel
             protos = h_unlabel[0][0].unsqueeze(0).unsqueeze(0)
-            radii = torch.ones(1, 1, device=h_unlabel.device) * torch.exp(self.log_sigma_l)
+            
+            radii = torch.ones(1, 1, device=h_unlabel.device, dtype=h_unlabel.dtype) * torch.exp(self.log_sigma_l)
             nClusters = 1
-
-            for _ in range(num_cluster_steps):
-                tensor_proto = protos.data
+            
+            unlabel_lambda_tensor = torch.tensor(unlabel_lambda, device=h_unlabel.device, dtype=h_unlabel.dtype)
+            
+            for ii in range(num_cluster_steps):
+                tensor_proto = protos
+                
                 for i, ex in enumerate(h_unlabel[0]):
-                    distances = self._compute_distances(tensor_proto, ex.data)
-                    if torch.min(distances) > unlabel_lambda:
+                    distances = self._compute_distances(tensor_proto, ex)
+                    if torch.min(distances) > unlabel_lambda_tensor:
                         nClusters, tensor_proto, radii = self._add_cluster(
-                            nClusters, tensor_proto, radii, cluster_type='labeled', ex=ex.data
+                            nClusters, tensor_proto, radii, 'labeled', ex
                         )
-
+                
                 prob_unlabel = assign_cluster_radii(tensor_proto, h_unlabel, radii)
                 prob_unlabel_nograd = prob_unlabel.detach()
-                protos = self._compute_protos(h_all, prob_unlabel_nograd)
-
-        return {'logits': prob_unlabel_nograd[0].detach()}
+                prob_all = prob_unlabel_nograd
+                protos = self._compute_protos(h_all, prob_all)
+        
+        return {'logits': prob_unlabel_nograd[0]}

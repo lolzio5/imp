@@ -5,31 +5,23 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 def one_hot(indices, depth, dim=-1, cumulative=True):
-    """One-hot encoding along dim"""
-    new_size = []
-    for ii in range(len(indices.size())):
-        if ii == dim:
-            new_size.append(depth)
-        new_size.append(indices.size()[ii])
-    if dim == -1:
-        new_size.append(depth)
-    
-    out = torch.zeros(new_size)
-    indices = torch.unsqueeze(indices, dim)
-    out = out.scatter_(dim, indices.data.type(torch.LongTensor), 1.0)
-
+    device = indices.device
+    out = torch.zeros(*indices.shape, depth, device=device)
+    out.scatter_(-1, indices.long().unsqueeze(-1), 1.0)
     return out
 
 def update_params(loss, params_dict, step_size=0.1):
-    params= [v for k,v in params_dict.items()]
-    updated_params = params_dict.copy()
-    grads = torch.autograd.grad(loss, params,
-        create_graph=False, allow_unused=True)
+    params = list(params_dict.values())
+    grads = torch.autograd.grad(loss, params, allow_unused=True)
 
-    for (name, param), grad in zip(params_dict, grads):
-        updated_params[name] = param - step_size * grad
-        
-    return updated_params 
+    updated = {}
+    for (name, param), grad in zip(params_dict.items(), grads):
+        if grad is None:
+            updated[name] = param
+        else:
+            updated[name] = param - step_size * grad
+    return updated
+
 
 def get_mean_nonzero(tensor, default):
     if torch.numel(torch.nonzero(tensor)) > 0:
@@ -63,10 +55,9 @@ def weighted_var_default(data, weights, default=1):
         return default
 
 def reverse_map(y_raw, class_id):
-    N = y_raw.size[1]
     out = np.zeros_like(y_raw)
-    for i in range(N):
-        out = class_id.index(y_raw[0, i])
+    for i in range(y_raw.shape[1]):
+        out[0, i] = class_id.index(y_raw[0, i])
     return out
 
 def ones_like(variable, requires_grad=False):

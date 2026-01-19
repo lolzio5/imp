@@ -166,11 +166,14 @@ class OmniglotDataset(RefinementMetaDataset):
   def get_images(self, inds):
     return self._images[inds]
 
-  def get_converted_images(self, inds, transform):
-    if transform:
-      return [transform(Image.fromarray(np.squeeze(self._images[ind,:]))) for ind in inds]
-    else:
-      return [Image.fromarray(np.squeeze(self._images[ind,:])) for ind in inds]
+  def get_converted_images(self, inds, transform=None):
+        imgs = []
+        for ind in inds:
+            img = self._images[ind].squeeze()  # (28, 28)
+            img = Image.fromarray((img * 255).astype(np.uint8))
+            imgs.append(transform(img) if transform else img)
+        return imgs
+        
   def process_category_labels(self, labels):
     i = 0
     mydict = {}
@@ -194,36 +197,16 @@ class OmniglotDataset(RefinementMetaDataset):
       return list(labels)
 
   def read_cache(self):
-    # """Reads dataset from cached pklz file."""
-    # cache_path = self.get_cache_path()
-    # print(cache_path)
-    # if os.path.exists(cache_path):
-    #   with open(cache_path, 'rb') as f:
-    #     try:
-    #       data = pkl.load(f, encoding='bytes')
-    #       self._images = data[b'images']
-    #       self._labels = data[b'labels']
-    #       self._label_str = data[b'label_str']
-    #       if b'category_labels' in list(data.keys()):
-    #         self._category_labels = data[b'category_labels']
-    #       else:
-    #         self._category_labels = None
-    #     except:
-    #       data = pkl.load(f)
-    #       self._images = data['images']
-    #       self._labels = data['labels']
-    #       self._label_str = data['label_str']
-    #       if b'category_labels' in list(data.keys()):
-    #         self._category_labels = data[b'category_labels']
-    #       else:
-    #         self._category_labels = None
-
-    #     self._category_labels = self.process_category_labels(self._category_labels)
-    #     self.read_label_split()
-    #     self.read_mode_split()
-    #   return True
-    # else:
-      return False
+    cache_path = self.get_cache_path()
+    if not os.path.exists(cache_path):
+        return False
+    with open(cache_path, 'rb') as f:
+        data = pkl.load(f)
+    self._images = data['images']
+    self._labels = data['labels']
+    self._label_str = data['label_str']
+    self._category_labels = data['category_labels']
+    return True
 
   def read_label_split(self):
     cache_path_labelsplit = self.get_label_split_path()
@@ -243,33 +226,34 @@ class OmniglotDataset(RefinementMetaDataset):
       self.save_label_split()
 
   def save_cache(self):
-    """Saves pklz cache."""
-    data = {
-        'images': self._images,
-        'labels': self._labels,
-        'label_str': self._label_str,
-        'category_labels': self._category_labels,
-    }
     with open(self.get_cache_path(), 'wb') as f:
-      pkl.dump(data, f, protocol=pkl.HIGHEST_PROTOCOL)
+        pkl.dump({
+            'images': self._images,
+            'labels': self._labels,
+            'label_str': self._label_str,
+            'category_labels': self._category_labels,
+        }, f, protocol=pkl.HIGHEST_PROTOCOL)
 
   def save_label_split(self):
     np.savetxt(self.get_label_split_path(), self._label_split_idx, fmt='%d')
 
   def read_dataset(self):
-    # Read data from folder or cache.
-    if not self.read_cache():
-      folder, split_def, split = self._folder, self._split_def, self._split
-      folder = get_image_folder(folder, split_def, split)
-      if split_def == 'lake':
-        self._images, self._labels, self._label_str, self._category_labels = read_lake_split(
-            folder, aug_90=self._aug_90)
-      elif split_def == 'vinyals':
-        split_file = get_vinyals_split_file(self._split)
-        self._images, self._labels, self._label_str, self._category_labels = read_vinyals_split(
-            folder, split_file, aug_90=self._aug_90, merged = True)#self._multimodal)
-      self.read_label_split()
+      if self.read_cache():
+          self.read_label_split()
+          self.read_mode_split()
+          return
 
+      folder = get_image_folder(self._folder, self._split_def, self._split)
+
+      if self._split_def == 'vinyals':
+          split_file = get_vinyals_split_file(self._split)
+          self._images, self._labels, self._label_str, self._category_labels = \
+              read_vinyals_split(folder, split_file, aug_90=self._aug_90, merged=True)
+      else:
+          self._images, self._labels, self._label_str, self._category_labels = \
+              read_lake_split(folder, aug_90=self._aug_90)
+
+      self.read_label_split()
       self._category_labels = self.process_category_labels(self._category_labels)
       self.read_mode_split()
       self.save_cache()
