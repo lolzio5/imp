@@ -15,7 +15,7 @@ COMMANDS=(
     # Table 1: Fully-supervised 10-way, 10-shot Omniglot alphabet recognition
     # Following sbatch script: nsuper=10 (alphabets), nsub=10 (chars/alphabet), nshot=1 (support), num-test=5 (query)
     # ============================================
-    "table1_alphabet_10way_10shot:::python run_eval.py --dataset omniglot --model imp --label-ratio 1.0 --nclasses-train 10 --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --disable-distractor --num-unlabel 0 --num-unlabel-test 0 --use-test --results ./results/table1/alphabet_10way_10shot"
+    "table1_alphabet_10way_10shot:::python run_eval.py --dataset omniglot --model imp --super-classes --nsuperclassestrain 10 --nsuperclasseseval 10 --nclasses-train 10 --nclasses-episode 10 --nclasses-eval 10 --label-ratio 1.0 --num-unlabel 0 --num-unlabel-test 0 --nshot 1 --use-test --results ./results/table1/alphabet_10way_10shot"
     # ============================================
     # Table 3: Alphabet and character recognition accuracy
     # ============================================
