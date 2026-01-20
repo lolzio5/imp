@@ -138,11 +138,9 @@ def assign_cluster_radii_limited(cluster_centers, data, radii, target_labels):
         prob: [B, N, K] Soft assignment.
     """
     logits = compute_logits_radii(cluster_centers, data, radii) # [B, N, K]
-    class_logits = (torch.min(logits).data-100)*torch.ones(logits.data.size()).cuda()
-    # print("target_labels size", target_labels.size())
-    # print("class_logits",class_logits[0,:].size())
-    # print("logit.data",logits.data.size())
-    class_logits[0,target_labels] = logits.data[0,target_labels]
+    class_logits = torch.full_like(logits, (torch.min(logits) - 100).item())
+    class_logits = class_logits.clone()
+    class_logits[0, target_labels] = logits[0, target_labels]
 
     logits_shape = logits.size()
     bsize = logits_shape[0]
@@ -223,8 +221,8 @@ def compute_logits_radii(cluster_centers, data, radii, prior_weight=1.):
     radii = torch.unsqueeze(radii, 1)  # [B, 1, K]
     neg_dist = -torch.sum((data - cluster_centers)**2, dim=3)   # [B, N, K]
 
-    logits = neg_dist / 2.0 / (radii)
-    norm_constant = 0.5*dim*(torch.log(radii) + np.log(2*np.pi))
+    logits = neg_dist / 2.0 / (radii ** 2)
+    norm_constant = 0.5*dim*np.log(2*np.pi) + dim*torch.log(radii)
 
     logits = logits - norm_constant
     return logits
