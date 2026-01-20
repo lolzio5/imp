@@ -50,7 +50,7 @@ class IMPModel(Protonet):
         else:
             sigma = torch.exp(self.log_sigma_l)
         
-        lamda = -2 * sigma * torch.log(torch.tensor(self.config.ALPHA, device=sigma.device)) + \
+        lamda = 2 * sigma * torch.log(torch.tensor(self.config.ALPHA, device=sigma.device)) + \
                 self.config.dim * sigma * torch.log(1 + rho / sigma)
         
         return lamda
@@ -108,9 +108,10 @@ class IMPModel(Protonet):
             class_logits[class_mask.repeat(logits.size(0), 1)] = logits[:, class_mask].reshape(-1)
             _, best_in_class = torch.max(class_logits, dim=1)
             weights[torch.arange(targets.size(0), device=weights.device), best_in_class] = 1.0
-        
         loss = weighted_loss(logits, best_targets, weights)
         return loss.mean()
+    
+
 
     def forward(
         self,
@@ -119,7 +120,6 @@ class IMPModel(Protonet):
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Forward pass with clustering."""
         batch = self._process_batch(sample, super_classes=super_classes)
-        
         unique_train_labels = torch.unique(batch.y_train)
         nClusters = unique_train_labels.numel()
         nInitialClusters = nClusters
@@ -212,14 +212,15 @@ class IMPModel(Protonet):
         loss = self.loss(logits, support_targets, support_labels)
         
         _, support_preds = torch.max(logits, dim=1)
+        
         y_pred = support_labels[support_preds]
-        
         acc_val = torch.eq(y_pred, labels[0]).float().mean()
-        
+        num_prototypes = protos.size(1)
         return loss, {
             'loss': loss,
             'acc': acc_val,
-            'logits': logits[0]
+            'logits': logits,
+            'num_protos':num_prototypes
         }
 
     def forward_unsupervised(

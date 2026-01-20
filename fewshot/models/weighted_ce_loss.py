@@ -37,6 +37,6 @@ def weighted_loss(logits, targets, weights):
     Returns:
         loss per example: [B]
     """
-    logsumexp = log_sum_exp(logits, weights, dim=1, keepdim=False)
+    logsumexp_neg = log_sum_exp(logits, weights, dim=1, keepdim=False)
     selected = class_select(logits, targets)
-    return -selected + logsumexp
+    return -selected + logsumexp_neg

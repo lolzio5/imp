@@ -92,6 +92,7 @@ args = parser.parse_args()
 free_gpu_id = get_free_gpu()
 os.environ['CUDA_VISIBLE_DEVICES'] = str(free_gpu_id)
 
+
 def _get_model(config):
     m = get_model(
                     args.model,
@@ -177,6 +178,7 @@ def train(config,
         loss, output = model(batch, super_classes=args.super_classes)
         loss.backward()
 
+        
         torch.nn.utils.clip_grad_norm(model.parameters(),clip)
 
         if (niter+1) % args.accumulation_steps == 0:
@@ -188,6 +190,9 @@ def train(config,
                 exp_logger.log_learn_rate(niter, lr[-1])
             val_results = evaluate(model, meta_val_dataset, num_episodes=args.num_eval_episode)
             model.train()
+            with open("loss_log.txt", "a") as f:
+                f.write(
+                    f"{niter},{loss.item()},{output['acc'].item()},{val_results['acc']},{output['num_protos']}\n")
             if log_results:
                 exp_logger.log_valid_acc(niter, val_results['acc'])
                 exp_logger.log_learn_rate(niter, lr[-1])
@@ -219,6 +224,7 @@ def main(args):
     torch.cuda.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
+
     if args.num_test == -1 and (args.dataset == "tiered-imagenet" or
                                                              args.dataset == 'mini-imagenet'):
         num_test = 5 #to avoid too much computation
